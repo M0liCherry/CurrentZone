@@ -6,6 +6,7 @@ import TopBar from './components/TopBar'
 import ThemeDialog from './components/ThemeDialog'
 import { Dialog } from './components/ui'
 import Dashboard from './pages/Dashboard'
+import Predictor from './pages/Predictor'
 import Usage from './pages/Usage'
 import Devices from './pages/Devices'
 import Insights from './pages/Insights'
@@ -37,6 +38,7 @@ export default function App() {
           <main className="page">
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/predictor" element={<Predictor />} />
               <Route path="/usage" element={<Usage />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/insights" element={<Insights />} />

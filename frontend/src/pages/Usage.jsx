@@ -1,10 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Activity } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { dailyUsage, weeklyUsage, monthlyUsage } from '../data/mockData'
+import { api } from '../services/api'
 
 export default function Usage() {
   const [range, setRange] = useState('week')
+  const [dailyData, setDailyData] = useState({
+    averageDailyUseKwh: 28,
+    dailyChangePct: 20,
+    comparedToYesterdayKwh: 5,
+    peakWindow: '4PM – 8PM',
+    chart: [],
+  })
+  const [weeklyData, setWeeklyData] = useState([])
+  const [monthlyData, setMonthlyData] = useState([])
+
+  useEffect(() => {
+    let mounted = true
+    api.getDailyUsage().then(d => mounted && setDailyData(d))
+    api.getWeeklyUsage().then(w => mounted && setWeeklyData(w.chart))
+    api.getMonthlyUsage().then(m => mounted && setMonthlyData(m.chart))
+    return () => { mounted = false }
+  }, [])
   return (
     <>
       <div className="page-head">
@@ -25,7 +42,7 @@ export default function Usage() {
           <div className="m3-label">Daily consumption · Today</div>
           <div className="chart-box">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyUsage}>
+              <BarChart data={dailyData.chart}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" vertical={false} />
                 <XAxis dataKey="t" tick={{ fill: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }} axisLine={false} tickLine={false} />
                 <YAxis hide />
@@ -35,25 +52,25 @@ export default function Usage() {
             </ResponsiveContainer>
           </div>
           <div className="chip-row" style={{ marginTop: 12 }}>
-            {dailyUsage.map(d => <span key={d.t} className="m3-chip">{d.t} · {d.kwh}</span>)}
+            {dailyData.chart.map(d => <span key={d.t} className="m3-chip">{d.t} · {d.kwh}</span>)}
           </div>
         </div>
         <div className="grid grid-2">
           <div className="m3-card primary-tint">
             <div className="m3-label" style={{ color: 'inherit' }}>Average daily use</div>
-            <div className="kpi">28 kWh</div>
-            <div className="good">+20%</div>
+            <div className="kpi">{dailyData.averageDailyUseKwh} kWh</div>
+            <div className="good">+{dailyData.dailyChangePct}%</div>
           </div>
           <div className="m3-card filled">
             <div className="m3-label">Compared to yesterday</div>
-            <div className="kpi">+5 kWh</div>
-            <div className="m3-body">Peak was 4PM – 8PM</div>
+            <div className="kpi">+{dailyData.comparedToYesterdayKwh} kWh</div>
+            <div className="m3-body">Peak was {dailyData.peakWindow}</div>
           </div>
           <div className="m3-card outlined" style={{ gridColumn: '1 / -1' }}>
             <h4 className="m3-title">Weekly consumption · This week</h4>
             <div className="chart-box" style={{ height: 200 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={weeklyUsage}>
+                <BarChart data={weeklyData}>
                   <XAxis dataKey="d" tick={{ fill: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: 'var(--md-sys-color-surface-container-highest)', border: 'none', borderRadius: 12 }} />
                   <Bar dataKey="kwh" radius={[8, 8, 4, 4]} fill="var(--md-sys-color-secondary-container)" />
@@ -70,7 +87,7 @@ export default function Usage() {
         </div>
         <div className="chart-box tall">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={monthlyUsage}>
+            <AreaChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
               <XAxis dataKey="m" tick={{ fill: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }} axisLine={false} tickLine={false} />

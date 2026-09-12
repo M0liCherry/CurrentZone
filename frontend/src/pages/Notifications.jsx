@@ -1,10 +1,32 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bell, Check } from 'lucide-react'
-import { notifications as seed } from '../data/mockData'
+import { api } from '../services/api'
 
 export default function Notifications() {
-  const [items, setItems] = useState(seed)
+  const [items, setItems] = useState([])
   const [filter, setFilter] = useState('all')
+
+  const fetchNotifs = async () => {
+    const list = await api.getNotifications()
+    setItems(list)
+  }
+
+  useEffect(() => {
+    fetchNotifs()
+  }, [])
+
+  const markRead = async (id) => {
+    setItems(items.map(i => (i.id === id ? { ...i, unread: false } : i)))
+    await api.markNotificationRead(id)
+  }
+
+  const markAllRead = async () => {
+    setItems(items.map(i => ({ ...i, unread: false })))
+    for (const item of items) {
+      if (item.unread) await api.markNotificationRead(item.id)
+    }
+  }
+
   const shown = items.filter(n => (filter === 'unread' ? n.unread : true))
   return (
     <>
@@ -19,7 +41,7 @@ export default function Notifications() {
             <button className={filter === 'all' ? 'selected' : ''} onClick={() => setFilter('all')}>All</button>
             <button className={filter === 'unread' ? 'selected' : ''} onClick={() => setFilter('unread')}>Unread</button>
           </div>
-          <button className="m3-btn text" onClick={() => setItems(items.map(i => ({ ...i, unread: false })))}>Mark all read</button>
+          <button className="m3-btn text" onClick={markAllRead}>Mark all read</button>
         </div>
       </div>
       <div className="grid grid-2">
@@ -33,7 +55,7 @@ export default function Notifications() {
             </div>
             {n.unread && (
               <button className="m3-btn text" aria-label={`Mark ${n.title} read`}
-                onClick={() => setItems(items.map(i => (i.id === n.id ? { ...i, unread: false } : i)))}>
+                onClick={() => markRead(n.id)}>
                 <Check size={16} /> Done
               </button>
             )}

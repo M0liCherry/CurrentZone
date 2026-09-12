@@ -1,9 +1,10 @@
-import { useContext, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, CircleHelp, Palette, ShieldAlert, SlidersHorizontal } from 'lucide-react'
-import { user } from '../data/mockData'
+import { user as seedUser } from '../data/mockData'
 import { Switch, Snackbar } from '../components/ui'
 import { AppUI } from '../App'
+import { api } from '../services/api'
 
 function Row({ label, value, action }) {
   return (
@@ -17,8 +18,15 @@ function Row({ label, value, action }) {
 export default function Settings() {
   const nav = useNavigate()
   const { openTheme } = useContext(AppUI)
+  const [profile, setProfile] = useState(seedUser)
   const [prefs, setPrefs] = useState({ location: true, push: true, green: false })
   const [snack, setSnack] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+    api.getUserProfile().then(u => mounted && setProfile(p => ({ ...p, ...u })))
+    return () => { mounted = false }
+  }, [])
   const say = m => { setSnack(m); setTimeout(() => setSnack(''), 2000) }
   return (
     <>
@@ -31,11 +39,11 @@ export default function Settings() {
       <div className="grid grid-2">
         <div className="m3-card">
           <h3 className="m3-headline">My account</h3>
-          <Row label="Name" value={user.name} />
-          <Row label="Username" value={user.username} />
-          <Row label="Birthday" value={user.birthday} />
-          <Row label="Mobile Number" value={user.mobile} />
-          <Row label="Email" value={user.email} />
+          <Row label="Name" value={profile.name} />
+          <Row label="Username" value={profile.username} />
+          <Row label="Birthday" value={profile.birthday} />
+          <Row label="Mobile Number" value={profile.mobile} />
+          <Row label="Email" value={profile.email} />
           <Row label="Password" action={() => say('Password reset link sent')} />
           <Row label="Notifications" action={() => nav('/notifications')} />
         </div>

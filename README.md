@@ -129,45 +129,147 @@ The **Robocraze SCT-013 100A AC Current Sensor** is a non-invasive current trans
 
 ---
 
-## 📱 SmartWatt UI Application Endpoints
+## 📱 SmartWatt Web Application (Frontend & Backend Integration)
 
-The backend natively supports every screen in the Figma mobile design:
+The web frontend is a desktop-optimized React application crafted in **Google Material 3 (Material You)**, featuring dynamic color theming, clean Lucide iconography, interactive Recharts graphs, and responsive navigation (drawer → rail → bottom bar). It is directly linked to the FastAPI backend via a Vite reverse proxy.
 
-| Figma Screen | Backend Route | Description |
+```
+                  ┌──────────────────────────────────────────────┐
+                  │          React 18 + Vite Frontend            │
+                  │   - Material 3 (Material You) Theme Studio   │
+                  │   - Live Usage & Draw KPIs                   │
+                  │   - AI Grid Outage Predictor & Simulator     │
+                  │   - Appliance Insights & Billing History     │
+                  │   - Smart Plug Control & Budgets             │
+                  └──────────────────────┬───────────────────────┘
+                                         │ Reverse Proxy (/api, /health)
+                                         ▼
+                  ┌──────────────────────────────────────────────┐
+                  │             FastAPI REST Backend             │
+                  │   - SQLite Database & SQLAlchemy ORM         │
+                  │   - IEEE C57.91 Transformer Thermal Physics  │
+                  │   - Scikit-learn Outage Predictor            │
+                  │   - Telemetry Ingestion (ESP32 SCT-013)      │
+                  └──────────────────────────────────────────────┘
+```
+
+### Screen & Feature Catalog:
+
+| Screen / Feature | Route | Description |
 | :--- | :--- | :--- |
-| **Usage Details** | `GET /api/usage/daily` | Today's hourly usage (12AM, 4AM, 8AM, 12PM, 4PM, 8PM), average daily use (28 kWh, +20%), vs yesterday (+5 kWh). |
-| **Weekly / Monthly** | `GET /api/usage/weekly`<br>`GET /api/usage/monthly` | Mon–Sun weekly consumption and 12-month consumption curve. |
-| **Energy Insights** | `GET /api/insights/bedroom` | Bedroom breakdown: AC (45 kWh / 37.5%), Fan (30 kWh / 25%), Light (25 kWh / 20.8%), 4.5 star rating. |
-| **Cost Estimation** | `GET /api/billing/summary` | Current bill ($123.50, due Oct 15), past bills, $20 savings this month, green promo. |
-| **Budgets & Alerts** | `GET /api/budgets`<br>`POST /api/budgets` | Set monthly budget limits and automated threshold alerts. |
-| **Connect Device** | `POST /api/devices/{id}/connect` | Smart plug and ESP32 non-invasive CT monitor pairing. |
-| **Notifications** | `GET /api/notifications` | Push notification tray for outage risk warnings, high usage, and budgets. |
-| **User Profile** | `GET /api/auth/me`<br>`POST /api/auth/login` | User authentication matching Leslie Raymond (`leslie294`). |
-| **Outage Intelligence** | `GET /api/predictor/overview`<br>`POST /api/predictor/simulate` | Grid-wide risk overview, zone vulnerabilities, and scenario stress testing. |
+| **Live Dashboard** | `/` | Real-time draw (kW), active devices, today's kWh, estimated bill, budget progress, weekly consumption area chart, and the **AI Grid Outage Risk Banner**. |
+| **AI Outage Predictor** | `/predictor` | **Flagship Feature**: Transformer health diagnostics (top-oil temp, load %, failure probability, TTF minutes) and an **Interactive Weather & Stress Simulator** to test heatwaves and overload scenarios against the ML model. |
+| **Usage Details** | `/usage` | Daily consumption breakdown by time slots (12AM, 4AM, 8AM, 12PM, 4PM, 8PM), average daily use (28 kWh, +20%), peak hour analysis, weekly bar chart, and 12-month annual area chart. |
+| **Devices & Plugs** | `/devices` | Real-time device toggles (Smart Fridge, TV, AC, Lamp, Fan), power draw (W), daily kWh stats, historical device consumption, and pairing links. |
+| **Appliance Insights** | `/insights` | Bedroom energy consumption overview: AC (45 kWh / 37.5%), Fan (30 kWh / 25%), Light (25 kWh / 20.8%), peak consumption gauge, and review rating distribution. |
+| **Cost Estimation & Bills** | `/bills` | Current estimated cycle bill ($123.50, due Oct 15), payment history table (Paid status), estimated monthly savings ($20.00), and green energy transition options. |
+| **Budgets & Alerts** | `/budget` | Monthly budget manager (USD), visual linear consumption gauge, 80% & 100% threshold alert notifications, and multi-channel alert options (Push, Email, SMS). |
+| **Save Energy Hub** | `/recommendations` | 7-point efficiency guide and high-impact energy saving tips (eco mode water heater, AC setpoint tuning, phantom standby elimination). |
+| **Notification Center** | `/notifications` | Notification tray synchronizing real-time grid alerts, budget overruns, and device anomalies with mark-as-read backend persistence. |
+| **Connect Plug** | `/connect` | Guided 6-step smart plug pairing hero band and live device registration modal connecting directly to the backend database. |
+| **Theme Studio** | Modal / TopBar | Google Material You dynamic color generator with 8 curated seeds, custom hex picker, and dark/light brightness modes persisted to `localStorage`. |
+| **Settings** | `/settings` | Profile management (Leslie Rasmund), account info, privacy controls, and support access. |
 
 ---
 
-## 🚀 Getting Started
+## ⚙️ How the System Works (End-to-End Workflow)
+
+```
+[1. SENSING]
+  Robocraze SCT-013 100A non-invasive CT sensor clamps onto distribution transformer line or appliance lead.
+    │
+    ▼
+[2. EDGE SAMPLING]
+  ESP32 microcontroller samples analog waveform at 500 samples/window, computes true RMS current (I_rms),
+  active power (Watts), and energy (kWh).
+    │
+    ▼ (HTTP POST JSON Telemetry)
+[3. BACKEND INGESTION & GRID MONITORING]
+  FastAPI backend validates telemetry at `/api/telemetry/ingest`, updates device records in SQLite,
+  and syncs localized ambient weather data (heat index, storm wind gusts, lightning index).
+    │
+    ▼
+[4. PHYSICS & MACHINE LEARNING INFERENCE]
+  - IEEE C57.91 Thermal Engine calculates top-oil temperature and hot-spot temperature rise.
+  - Surge Velocity Engine ($dI/dt$) flags uncharacteristic demand spikes.
+  - Outage Prediction Model evaluates failure probability (0–100%) and forecasts Time-to-Failure (TTF).
+    │
+    ▼ (Reverse Proxy /api)
+[5. MATERIAL 3 WEB USER INTERFACE]
+  - Dashboard alerts users to elevated grid risk before power cuts occur.
+  - Operators can run interactive simulations to forecast grid behavior under extreme heat or storms.
+  - Homeowners monitor live draw, toggle smart plugs, track monthly budgets, and analyze appliance efficiency.
+  - Automatic fallback ensures the UI works offline in "Mock Mode" if the server is stopped.
+```
+
+---
+
+## 🚀 Getting Started & Running Locally
 
 ### 1. Prerequisites
-- **Python**: `>= 3.12` with [`uv`](https://github.com/astral-sh/uv) installed.
-- **ESP-IDF**: `v5.x` or `v6.x` located in `../esp/esp-idf` or system PATH.
+- **Node.js**: `>= 18.x`
+- **Python**: `>= 3.12` with [`uv`](https://github.com/astral-sh/uv) or virtual environment
+- **ESP-IDF** (optional, for ESP32 hardware): `v5.x` or `v6.x`
 
-### 2. Running the Python Backend
+### 2. Running Both Frontend & Backend (Unified)
+
+From the project root directory:
+
+```bash
+# 1. Install frontend dependencies
+npm --prefix frontend install
+
+# 2. Setup backend virtual environment and dependencies
+cd backend
+uv venv
+source .venv/bin/activate
+uv pip install -e .
+cd ..
+
+# 3. Launch both backend (port 8000) and frontend (port 5173) concurrently:
+npm run dev
+```
+
+The application will be accessible at:
+- **Web App**: `http://localhost:5173`
+- **Backend API**: `http://localhost:8000`
+- **API Swagger Documentation**: `http://localhost:8000/docs`
+
+---
+
+### 3. Running Services Independently
+
+#### Backend Only:
 ```bash
 cd backend
-
-# Run the test suite (10/10 tests)
-uv run pytest -v
-
-# Launch the live FastAPI server
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+source .venv/bin/activate
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-Interactive OpenAPI documentation will be available at:
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
 
-### 3. Compiling & Flashing ESP32 Firmware
+#### Frontend Only:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+> **Note on Zero-Breakage Offline Mode**: The frontend features an automatic health detector. If the backend is running, the top bar displays a green **`Backend Online`** badge. If the backend is stopped, the frontend seamlessly operates in **`Mock Mode`** with local data, ensuring uninterrupted development and demonstration.
+
+---
+
+### 4. Running Backend Tests & Validation
+
+```bash
+# Run pytest test suite (10/10 tests passing)
+npm run test
+
+# Build frontend production bundle (Vite)
+npm run build:frontend
+```
+
+---
+
+### 5. Compiling & Flashing ESP32 Firmware
 ```bash
 # Activate ESP-IDF environment
 source /home/nate/Projects/esp/esp-idf/export.sh
@@ -178,12 +280,14 @@ cd backend/esp
 # Build firmware
 idf.py build
 
-# Flash to device (replace /dev/ttyUSB0 with your serial port)
+# Flash to ESP32 device
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
-### 4. Simulating Outage Scenarios
-You can test the failure prediction engine under severe simulated conditions (e.g. 42°C heatwave + 72 km/h wind gusts + 115A overload) with a single cURL request:
+---
+
+### 6. Simulating Outage Scenarios via cURL
+You can test the failure prediction engine under severe simulated conditions (e.g. 42°C heatwave + 72 km/h wind gusts + 115A overload) directly:
 
 ```bash
 curl -X POST "http://localhost:8000/api/predictor/simulate" \
@@ -199,52 +303,61 @@ curl -X POST "http://localhost:8000/api/predictor/simulate" \
   }'
 ```
 
-**Response**:
-```json
-{
-  "zone": "Residential South",
-  "transformer_id": "TX-RES-01",
-  "failure_probability_pct": 89.2,
-  "risk_level": "CRITICAL",
-  "estimated_ttf_minutes": 15,
-  "simulated_load_pct": 115.0,
-  "simulated_oil_temp_c": 98.4,
-  "primary_factors": [
-    "Transformer overloaded at 115.0% rated capacity (115.0A).",
-    "High top-oil thermal rise (98.4°C, Hot-spot 127.2°C).",
-    "Severe ambient heatwave (42.0°C, Heat Index 52.8°C).",
-    "Dangerous storm gusts up to 72.0 km/h (feeder vegetation hazard).",
-    "Severe lightning activity detected (Index 8.0/10)."
-  ],
-  "mitigation_actions": [
-    "Initiate immediate load shedding on non-essential heavy appliances.",
-    "Inspect transformer auxiliary cooling fans & radiator banks.",
-    "Dispatch field patrol to clear high-risk tree branches near overhead lines.",
-    "Verify substation surge arresters & grounding continuity."
-  ]
-}
-```
-
 ---
 
 ## 📂 Project Structure
 
 ```
 Current_Zone/
-├── README.md                  # Root project overview & architecture
-├── .gitignore                 # Git ignore rules for Python & ESP-IDF
+├── README.md                  # Complete project guide & architecture
+├── package.json               # Unified scripts to run frontend & backend concurrently
+├── .gitignore                 # Git ignore rules for Python, Node.js & ESP-IDF
 ├── design_exports/            # Exported Figma UI screens & flowcharts
-└── backend/
+│
+├── frontend/                  # React 18 + Vite Web Application
+│   ├── README.md              # Frontend architecture & Material 3 design guide
+│   ├── package.json           # React, Vite, Recharts, Lucide-react dependencies
+│   ├── vite.config.js         # Vite configuration with /api & /health reverse proxy
+│   ├── index.html             # HTML entry point
+│   └── src/
+│       ├── main.jsx           # App bootstrap
+│       ├── App.jsx            # Shell, Router & Dialog handlers
+│       ├── index.css          # Material 3 design system & typography tokens
+│       ├── color.js           # Dynamic Material You color engine
+│       ├── theme.jsx          # Theme provider & persistent localStorage hooks
+│       ├── services/
+│       │   └── api.js         # Unified API client with automatic fallback to mock data
+│       ├── data/
+│       │   └── mockData.js    # Seed datasets & fallback records
+│       ├── components/
+│       │   ├── Navigation.jsx # Drawer (desktop) / Rail (tablet) / BottomBar (mobile)
+│       │   ├── TopBar.jsx     # App bar with search & live Backend Online indicator
+│       │   ├── ThemeDialog.jsx# Material You seed color & dark/light picker
+│       │   └── ui.jsx         # M3 components (Switch, Dialog, Snackbar)
+│       └── pages/
+│           ├── Dashboard.jsx  # Live monitor, KPIs & Outage Risk alert
+│           ├── Predictor.jsx  # AI Outage Predictor & Severe Weather Simulator
+│           ├── Usage.jsx      # Daily, weekly & monthly consumption analytics
+│           ├── Devices.jsx    # Smart plug controls & consumption history
+│           ├── Insights.jsx   # Appliance breakdown & rating benchmarks
+│           ├── Bills.jsx      # Cost estimation & past billing cycles
+│           ├── Budget.jsx     # Budget management & threshold alerts
+│           ├── Recommendations.jsx # Energy efficiency recommendations
+│           ├── Notifications.jsx   # Alert center with mark-as-read sync
+│           ├── Connect.jsx    # Smart plug pairing wizard & live registration
+│           └── Settings.jsx   # User profile & system preferences
+│
+└── backend/                   # FastAPI Backend & ESP-IDF Firmware
     ├── README.md              # Backend & hardware detailed guide
     ├── pyproject.toml         # Dependencies & configuration (uv)
-    ├── uv.lock                # Locked dependency tree
-    ├── main.py                # Server entry point
-    ├── tests/                 # Comprehensive test suite
-    │   └── test_api.py        # 10 integration & algorithm tests
+    ├── smartwatt.db           # SQLite database for devices, telemetry & users
+    ├── tests/
+    │   └── test_api.py        # 10 integration & algorithm tests (pytest)
     ├── app/
-    │   ├── config.py          # Grid & sensor settings
-    │   ├── database.py        # SQLAlchemy session & SQLite/Postgres
-    │   ├── seed_data.py       # Grid topology & demo account seed
+    │   ├── main.py            # FastAPI entry point & CORS configuration
+    │   ├── config.py          # Grid, sensor & threshold settings
+    │   ├── database.py        # SQLAlchemy engine & session management
+    │   ├── seed_data.py       # Grid topology & demo account seeding
     │   ├── models/            # SQLAlchemy database models
     │   │   ├── grid.py        # Transformers, Telemetry, Outages, Weather
     │   │   └── user.py        # Users, Devices, Budgets, Notifications
@@ -255,12 +368,20 @@ Current_Zone/
     │   │   ├── anomaly_detector.py  # Surge velocity & diurnal profiles
     │   │   ├── outage_predictor.py  # Scikit-learn Failure Classifier
     │   │   └── grid_analytics.py    # Figma UI aggregations
-    │   └── routers/           # FastAPI REST & WebSocket endpoints
+    │   └── routers/           # FastAPI REST endpoints
+    │       ├── auth.py        # Authentication & profile endpoints
+    │       ├── billing.py     # Billing & cost estimation
+    │       ├── budgets.py     # Budget limits & alert thresholds
+    │       ├── devices.py     # Smart plug telemetry & pairing
+    │       ├── insights.py    # Appliance breakdown
+    │       ├── notifications.py # Notification tray
+    │       ├── predictor.py   # Transformer risk & scenario simulation
+    │       ├── telemetry.py   # Ingestion for ESP32 SCT-013 sensor
+    │       └── usage.py       # Daily/weekly/monthly kWh analytics
     └── esp/                   # ESP-IDF C Project for ESP32
         ├── CMakeLists.txt     # Root CMake configuration
         ├── sdkconfig.defaults # Hardware defaults & FreeRTOS settings
         └── main/
-            ├── CMakeLists.txt
             ├── sct013.h / .c         # Robocraze SCT-013 100A ADC driver
             ├── wifi_station.h / .c   # Wi-Fi station with auto-reconnect
             ├── telemetry_client.h / .c # HTTP JSON telemetry client
@@ -271,4 +392,4 @@ Current_Zone/
 
 ## 🛡️ License
 
-Built for the CurrentZone / SmartWatt smart grid initiative.
+Built for the CurrentZone / SmartWatt smart grid and intelligent energy monitoring initiative.

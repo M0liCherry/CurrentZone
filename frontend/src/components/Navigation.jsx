@@ -1,13 +1,14 @@
 import { NavLink } from 'react-router-dom'
 import {
   Activity, Bell, House, Lightbulb, LogOut,
-  Plug, Plus, Receipt, Scale, Settings, TrendingUp, Zap,
+  Plug, Plus, Receipt, Scale, Settings, ShieldAlert, TrendingUp, Zap,
 } from 'lucide-react'
 import { notifications, user } from '../data/mockData'
 
 const links = [
   { section: 'Monitor' },
   { to: '/', label: 'Dashboard', icon: House, end: true },
+  { to: '/predictor', label: 'Outage Predictor', icon: ShieldAlert },
   { to: '/usage', label: 'Usage', icon: Activity },
   { to: '/devices', label: 'Devices', icon: Plug },
   { to: '/insights', label: 'Insights', icon: TrendingUp },

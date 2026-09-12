@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import BudgetAlert
 from app.schemas.billing import BudgetSettingsRequest, BudgetSettingsResponse
+from app.services.grid_analytics import GridAnalyticsService
 
 router = APIRouter(prefix="/budgets", tags=["Budgets & Alerts"])
 
@@ -22,15 +23,20 @@ def get_user_budget(db: Session = Depends(get_db)):
         db.add(budget)
         db.commit()
         
-    spent = round(budget.current_spent_usd, 2)
+    billing = GridAnalyticsService.get_billing_summary(db)
+    current_bill = billing.get("current_bill", {})
+    kwh_so_far = current_bill.get("kwh_so_far", 0.0)
+    rate = current_bill.get("rate_per_kwh", 0.15)
+    spent = round(kwh_so_far * rate, 2)
+
     total = budget.monthly_budget_usd
-    rem = max(0.0, total - spent)
+    rem = max(0.0, round(total - spent, 2))
     pct = round((spent / total) * 100.0, 1) if total > 0 else 0.0
     
     return BudgetSettingsResponse(
         monthly_budget_usd=total,
         current_spent_usd=spent,
-        remaining_budget_usd=round(rem, 2),
+        remaining_budget_usd=rem,
         percentage_used=pct,
         alert_triggered=pct >= budget.alert_threshold_pct,
         status="APPROACHING_LIMIT" if pct >= budget.alert_threshold_pct else "ON_TRACK"
@@ -56,15 +62,20 @@ def update_user_budget(payload: BudgetSettingsRequest, db: Session = Depends(get
     db.commit()
     db.refresh(budget)
     
-    spent = budget.current_spent_usd
+    billing = GridAnalyticsService.get_billing_summary(db)
+    current_bill = billing.get("current_bill", {})
+    kwh_so_far = current_bill.get("kwh_so_far", 0.0)
+    rate = current_bill.get("rate_per_kwh", 0.15)
+    spent = round(kwh_so_far * rate, 2)
+
     total = budget.monthly_budget_usd
-    rem = max(0.0, total - spent)
+    rem = max(0.0, round(total - spent, 2))
     pct = round((spent / total) * 100.0, 1) if total > 0 else 0.0
     
     return BudgetSettingsResponse(
         monthly_budget_usd=total,
         current_spent_usd=spent,
-        remaining_budget_usd=round(rem, 2),
+        remaining_budget_usd=rem,
         percentage_used=pct,
         alert_triggered=pct >= budget.alert_threshold_pct,
         status="APPROACHING_LIMIT" if pct >= budget.alert_threshold_pct else "ON_TRACK"

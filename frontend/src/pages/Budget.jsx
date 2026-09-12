@@ -16,13 +16,20 @@ export default function Budget() {
 
   useEffect(() => {
     let mounted = true
-    api.getBudget().then(data => {
-      if (mounted) {
-        setBudgetStatus(data)
-        setBudgetInput(String(data.monthlyBudget))
-      }
-    })
-    return () => { mounted = false }
+    const load = () => {
+      api.getBudget().then(data => {
+        if (mounted) {
+          setBudgetStatus(data)
+          setBudgetInput(prev => prev === '' ? String(data.monthlyBudget) : prev)
+        }
+      })
+    }
+    load()
+    const interval = setInterval(load, 3000)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
   }, [])
 
   const submit = async () => {

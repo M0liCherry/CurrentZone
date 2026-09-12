@@ -22,13 +22,13 @@ export default function Dashboard() {
     const fetchLive = () => {
       api.getDevices().then(ds => mounted && setDevices(ds))
       api.getGridOverview().then(g => mounted && setGrid(g))
+      api.getDailyUsage().then(d => mounted && setDaily(d))
+      api.getBillingSummary().then(b => mounted && setBilling(b))
+      api.getBudget().then(b => mounted && setBudget(b))
     }
 
     fetchLive()
-    api.getDailyUsage().then(d => mounted && setDaily(d))
     api.getWeeklyUsage().then(w => mounted && setWeekly(w.chart || []))
-    api.getBillingSummary().then(b => mounted && setBilling(b))
-    api.getBudget().then(b => mounted && setBudget(b))
     api.getUserProfile().then(u => mounted && setUser(u))
 
     const interval = setInterval(fetchLive, 3000)
@@ -144,7 +144,7 @@ export default function Dashboard() {
         </div>
         <div className="m3-card filled">
           <div className="m3-label">Budget · Monthly</div>
-          <div className="kpi">${budget.currentSpent?.toFixed(0) || '0'} <span style={{ fontSize: '1rem', fontWeight: 400 }}>/ ${budget.monthlyBudget?.toFixed(0) || '150'}</span></div>
+          <div className="kpi">${budget.currentSpent?.toFixed(2) || '0.00'} <span style={{ fontSize: '1rem', fontWeight: 400 }}>/ ${budget.monthlyBudget?.toFixed(0) || '150'}</span></div>
           <div className="m3-linear" style={{ marginTop: 10 }}><div style={{ width: `${Math.min(100, budget.percentageUsed || 0)}%` }} /></div>
           <div className="kpi-sub" style={{ marginTop: 8 }}>{budget.percentageUsed || 0}% used</div>
         </div>

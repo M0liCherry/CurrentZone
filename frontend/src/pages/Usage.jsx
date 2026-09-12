@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Activity, Zap, Cpu } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Activity } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../services/api'
 
@@ -14,7 +14,6 @@ export default function Usage() {
   })
   const [weeklyData, setWeeklyData] = useState([])
   const [monthlyData, setMonthlyData] = useState([])
-  const [devices, setDevices] = useState([])
 
   useEffect(() => {
     let mounted = true
@@ -22,7 +21,6 @@ export default function Usage() {
       api.getDailyUsage().then(d => mounted && setDailyData(d))
       api.getWeeklyUsage().then(w => mounted && setWeeklyData(w.chart || []))
       api.getMonthlyUsage().then(m => mounted && setMonthlyData(m.chart || []))
-      api.getDevices().then(ds => mounted && setDevices(ds))
     }
     load()
     const interval = setInterval(load, 3000)
@@ -31,15 +29,6 @@ export default function Usage() {
       clearInterval(interval)
     }
   }, [])
-
-  const appliances = useMemo(() => {
-    const list = devices.filter(d => d.id !== 'esp32_sct013_res_01')
-    return list.length > 0 ? list : devices
-  }, [devices])
-
-  const totalWatts = useMemo(() => {
-    return appliances.reduce((sum, d) => sum + (d.watts || 0), 0)
-  }, [appliances])
 
   return (
     <>
@@ -110,90 +99,6 @@ export default function Usage() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Active Appliances & Device Electricity Breakdown */}
-      <div className="m3-card outlined" style={{ marginTop: 20 }}>
-        <div className="card-top" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div className="m3-label label-row"><Zap size={14} /> Real-Time Device Telemetry</div>
-            <h3 className="m3-headline">Active appliance &amp; device electricity draw</h3>
-            <p className="m3-body">
-              Live power draw and accumulated energy allocation across household appliances simulated and synchronized from ESP32 feeder telemetry.
-            </p>
-          </div>
-          <div className="chip-row">
-            <span className="m3-chip selected" style={{ background: 'var(--md-sys-color-primary-container)', color: 'var(--md-sys-color-on-primary-container)' }}>
-              ● Live Draw
-            </span>
-            <span className="m3-chip">{appliances.length} Devices Monitored</span>
-          </div>
-        </div>
-
-        {appliances.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
-            {appliances.map(app => {
-              const share = totalWatts > 0 ? Math.round(((app.watts || 0) / totalWatts) * 100) : 0
-              const Icon = app.icon || Zap
-              return (
-                <div 
-                  key={app.id} 
-                  style={{
-                    padding: '14px 18px',
-                    borderRadius: 16,
-                    background: 'var(--md-sys-color-surface-container-low)',
-                    border: '1px solid var(--md-sys-color-outline-variant)'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div 
-                        style={{ 
-                          width: 40, 
-                          height: 40, 
-                          borderRadius: 12, 
-                          background: 'var(--md-sys-color-primary-container)', 
-                          color: 'var(--md-sys-color-primary)',
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center' 
-                        }}
-                      >
-                        <Icon size={20} />
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--md-sys-color-on-surface)' }}>
-                          {app.name}
-                        </div>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
-                          {app.room} · {app.currentAmps?.toFixed(1) || '0.0'} A · {share}% of live load
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--md-sys-color-primary)' }}>
-                        {app.watts >= 1000 ? `${(app.watts / 1000).toFixed(2)} kW` : `${Math.round(app.watts || 0)} W`}
-                      </div>
-                      <div style={{ fontSize: '0.82rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
-                        <b>{Number(app.todayKwh || 0).toFixed(3)} kWh</b> today
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Visual Power Share Bar */}
-                  <div className="m3-linear" style={{ marginTop: 10, height: 6 }}>
-                    <div style={{ width: `${Math.min(100, Math.max(3, share))}%` }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--md-sys-color-outline)' }}>
-            <p className="m3-body">Connecting to ESP32 device stream...</p>
-          </div>
-        )}
       </div>
 
       <div className="m3-card" style={{ marginTop: 20 }}>

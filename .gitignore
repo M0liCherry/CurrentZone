@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+*.db
+*.sqlite3
+.pytest_cache/
+
+# ESP-IDF
+backend/esp/build/
+backend/esp/sdkconfig
+backend/esp/sdkconfig.old
+backend/esp/managed_components/
+dependencies.lock
+
+# OS / Editor
+.DS_Store
+*.swp
+*~

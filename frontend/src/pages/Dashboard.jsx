@@ -134,7 +134,7 @@ export default function Dashboard() {
         </div>
         <div className="m3-card filled">
           <div className="m3-label">Today</div>
-          <div className="kpi">{daily.averageDailyUseKwh} kWh</div>
+          <div className="kpi">{Number(daily.averageDailyUseKwh || 0).toFixed(2)} kWh</div>
           <div className="kpi-sub"><span className="good">+{daily.dailyChangePct}%</span> vs yesterday</div>
         </div>
         <div className="m3-card filled">

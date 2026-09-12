@@ -13,6 +13,49 @@ class GridAnalyticsService:
     """
     
     @classmethod
+    def _calculate_readings_kwh(cls, readings: List[TelemetryReading]) -> float:
+        """
+        Calculates true cumulative consumed energy from readings.
+        Handles ESP32 reboots and counter resets, plus integrates power over time.
+        """
+        if not readings:
+            return 0.0
+
+        readings_sorted = sorted(readings, key=lambda r: r.timestamp or datetime.min)
+        
+        counter_delta = 0.0
+        prev_e = None
+        has_counter = False
+
+        for r in readings_sorted:
+            curr_e = r.energy_kwh_total or 0.0
+            if prev_e is not None:
+                if curr_e >= prev_e:
+                    counter_delta += (curr_e - prev_e)
+                else:
+                    # Sensor counter reset / reboot
+                    counter_delta += curr_e
+                has_counter = True
+            prev_e = curr_e
+
+        if has_counter and counter_delta > 0.001:
+            return round(counter_delta, 2)
+
+        # Fallback to power integration: E = sum(P_avg * dt)
+        integrated_kwh = 0.0
+        for i in range(1, len(readings_sorted)):
+            dt_s = (readings_sorted[i].timestamp - readings_sorted[i-1].timestamp).total_seconds()
+            if 0 < dt_s <= 300:
+                avg_kw = (readings_sorted[i].power_kw + readings_sorted[i-1].power_kw) / 2.0
+                integrated_kwh += avg_kw * (dt_s / 3600.0)
+        
+        if integrated_kwh > 0.001:
+            return round(integrated_kwh, 2)
+            
+        avg_kw = sum(r.power_kw for r in readings) / len(readings)
+        return round(avg_kw * max(0.01, len(readings) * (3.0 / 3600.0)), 2)
+
+    @classmethod
     def get_daily_consumption(cls, db: Optional[Session] = None) -> Dict[str, Any]:
         """
         Computes today's consumption breakdown into 6 4-hour slots:
@@ -54,15 +97,7 @@ class GridAnalyticsService:
                 r for r in today_readings 
                 if start_h <= r.timestamp.hour < end_h
             ]
-            if slot_readings:
-                avg_kw = sum(r.power_kw for r in slot_readings) / len(slot_readings)
-                slot_kwh = round(avg_kw * min(4.0, max(0.2, len(slot_readings) * (3.0 / 3600.0))), 2)
-                max_e = max(r.energy_kwh_total for r in slot_readings)
-                min_e = min(r.energy_kwh_total for r in slot_readings)
-                if max_e > min_e:
-                    slot_kwh = round(max_e - min_e, 2)
-            else:
-                slot_kwh = 0.0
+            slot_kwh = cls._calculate_readings_kwh(slot_readings) if slot_readings else 0.0
             slots.append({"time_label": label, "kwh": slot_kwh})
             
         total_today_kwh = round(sum(s["kwh"] for s in slots), 2)
@@ -119,16 +154,7 @@ class GridAnalyticsService:
                 TelemetryReading.timestamp < d_end
             ).all()
             
-            if readings:
-                max_e = max(r.energy_kwh_total for r in readings)
-                min_e = min(r.energy_kwh_total for r in readings)
-                if max_e > min_e:
-                    kwh = round(max_e - min_e, 2)
-                else:
-                    avg_kw = sum(r.power_kw for r in readings) / len(readings)
-                    kwh = round(avg_kw * max(0.5, len(readings) * (3.0 / 3600.0)), 2)
-            else:
-                kwh = 0.0
+            kwh = cls._calculate_readings_kwh(readings) if readings else 0.0
             days.append({"day": day_name, "kwh": kwh})
             
         total = round(sum(d["kwh"] for d in days), 2)
@@ -411,12 +437,7 @@ class GridAnalyticsService:
             TelemetryReading.timestamp >= month_start
         ).all()
         
-        if readings:
-            max_e = max(r.energy_kwh_total for r in readings)
-            min_e = min(r.energy_kwh_total for r in readings)
-            kwh_so_far = max_e - min_e if max_e > min_e else sum(r.power_kw for r in readings) * 0.05
-        else:
-            kwh_so_far = 0.0
+        kwh_so_far = cls._calculate_readings_kwh(readings)
 
         # 3. Forecast end-of-month projected consumption
         if kwh_so_far > 0.05:

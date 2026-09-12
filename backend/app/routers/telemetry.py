@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.grid import Transformer, TelemetryReading
-from app.models.user import Device, Notification
+from app.models.user import Device, Notification, BudgetAlert
 from app.schemas.telemetry import TelemetryIngestRequest, TelemetryIngestResponse, LiveTelemetryBroadcast
 from app.services.outage_predictor import outage_predictor
 
@@ -91,13 +91,37 @@ async def ingest_telemetry(payload: TelemetryIngestRequest, db: Session = Depend
         transformer.current_top_oil_temp = prediction["top_oil_temp_c"]
         transformer.health_score = max(20.0, 100.0 - prediction["failure_probability_pct"] * 0.7)
         
-    # Update device status if exists
+    # Update device status or auto-register if communicating for the first time
     device = db.query(Device).filter(Device.id == payload.device_id).first()
-    if device:
+    if not device:
+        is_sensor = any(k in payload.device_id.lower() for k in ["sct", "tx", "esp"])
+        device = Device(
+            id=payload.device_id,
+            user_id=1,
+            name="ESP32 SCT-013 Transformer Monitor" if is_sensor else payload.device_id.replace("_", " ").title(),
+            device_type="transformer_monitor" if is_sensor else "smart_plug",
+            room="Main Breaker / Feeder" if is_sensor else "General",
+            zone=transformer.zone if transformer else "Residential South",
+            transformer_id=transformer.id if transformer else "TX-RES-01",
+            is_online=True,
+            current_power_w=power_kw * 1000.0,
+            current_amps=current_rms,
+            daily_kwh=payload.energy_kwh_total or 0.0,
+            last_seen=datetime.utcnow()
+        )
+        db.add(device)
+    else:
         device.is_online = True
         device.current_power_w = power_kw * 1000.0
         device.current_amps = current_rms
+        if payload.energy_kwh_total:
+            device.daily_kwh = payload.energy_kwh_total
         device.last_seen = datetime.utcnow()
+        
+    # Update user's current spend based on recorded energy
+    budget = db.query(BudgetAlert).filter(BudgetAlert.user_id == 1).first()
+    if budget and payload.energy_kwh_total:
+        budget.current_spent_usd = round(payload.energy_kwh_total * 0.15, 2)
         
     # Trigger alert notification if risk is high/critical
     if prediction["risk_level"] in ["HIGH", "CRITICAL"]:
@@ -143,22 +167,21 @@ async def ingest_telemetry(payload: TelemetryIngestRequest, db: Session = Depend
 @router.get("/latest")
 def get_latest_telemetry(transformer_id: Optional[str] = None, db: Session = Depends(get_db)):
     """
-    Returns latest telemetry reading.
+    Returns latest telemetry reading or null if awaiting sensor data or if ESP32 was disconnected.
     """
     query = db.query(TelemetryReading).order_by(TelemetryReading.timestamp.desc())
     if transformer_id:
         query = query.filter(TelemetryReading.transformer_id == transformer_id)
     reading = query.first()
     if not reading:
-        return {
-            "device_id": "esp32_sct013_res_01",
-            "current_rms": 42.8,
-            "power_kw": 9.85,
-            "voltage_v": 230.0,
-            "load_pct": 74.2,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        return None
+        
+    # If the reading is older than 10 seconds, the device is disconnected / offline
+    if (datetime.utcnow() - reading.timestamp).total_seconds() > 10.0:
+        return None
+        
     return reading
+
 
 @router.websocket("/live")
 async def live_telemetry_ws(websocket: WebSocket):

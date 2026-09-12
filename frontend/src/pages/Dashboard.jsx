@@ -2,31 +2,40 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, Plus, ShieldAlert, Zap } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { recommendations } from '../data/mockData'
+import { recommendations } from '../constants/tips'
 import { Switch, Snackbar } from '../components/ui'
 import { api } from '../services/api'
 
 export default function Dashboard() {
   const nav = useNavigate()
   const [devices, setDevices] = useState([])
-  const [daily, setDaily] = useState({ averageDailyUseKwh: 28, dailyChangePct: 20 })
+  const [daily, setDaily] = useState({ averageDailyUseKwh: 0, dailyChangePct: 0 })
   const [weekly, setWeekly] = useState([])
-  const [billing, setBilling] = useState({ current: { amount: 123.5, due: 'Due Oct 15' } })
-  const [budget, setBudget] = useState({ monthlyBudget: 150, currentSpent: 118, percentageUsed: 79 })
+  const [billing, setBilling] = useState({ current: { amount: 0, due: 'Due Next Cycle' } })
+  const [budget, setBudget] = useState({ monthlyBudget: 150, currentSpent: 0, percentageUsed: 0 })
   const [grid, setGrid] = useState(null)
-  const [user, setUser] = useState({ name: 'Leslie' })
+  const [user, setUser] = useState({ name: 'User' })
   const [snack, setSnack] = useState('')
 
   useEffect(() => {
     let mounted = true
-    api.getDevices().then(ds => mounted && setDevices(ds))
+    const fetchLive = () => {
+      api.getDevices().then(ds => mounted && setDevices(ds))
+      api.getGridOverview().then(g => mounted && setGrid(g))
+    }
+
+    fetchLive()
     api.getDailyUsage().then(d => mounted && setDaily(d))
-    api.getWeeklyUsage().then(w => mounted && setWeekly(w.chart))
+    api.getWeeklyUsage().then(w => mounted && setWeekly(w.chart || []))
     api.getBillingSummary().then(b => mounted && setBilling(b))
     api.getBudget().then(b => mounted && setBudget(b))
-    api.getGridOverview().then(g => mounted && setGrid(g))
     api.getUserProfile().then(u => mounted && setUser(u))
-    return () => { mounted = false }
+
+    const interval = setInterval(fetchLive, 3000)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
   }, [])
 
   const live = useMemo(() => {
@@ -47,7 +56,7 @@ export default function Dashboard() {
     setTimeout(() => setSnack(''), 2200)
   }
 
-  const firstName = user.name ? user.name.split(' ')[0] : 'Leslie'
+  const firstName = user.name ? user.name.split(' ')[0] : 'User'
 
   return (
     <>
@@ -107,7 +116,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <p className="m3-body" style={{ margin: 0, fontSize: '.82rem' }}>
-                Monitored Transformers: {grid.monitored_transformers_count || 3} · Ambient Heat: {grid.ambient_heat_index?.toFixed(1) || '34.2'}°C · Wind: {grid.max_wind_gust_kmh?.toFixed(0) || '22'} km/h
+                Monitored Transformers: {grid.monitored_transformers_count || 4} · Ambient Heat: {grid.ambient_heat_index?.toFixed(1) || '25.0'}°C · Wind: {grid.max_wind_gust_kmh?.toFixed(0) || '0'} km/h
               </p>
             </div>
           </div>
@@ -121,23 +130,23 @@ export default function Dashboard() {
         <div className="m3-card primary-tint">
           <div className="m3-label" style={{ color: 'inherit' }}>Live draw</div>
           <div className="kpi">{live.kw} kW</div>
-          <div className="kpi-sub">{live.count} of {devices.length} devices on · real-time</div>
+          <div className="kpi-sub">{live.count} of {devices.length} devices active · real-time</div>
         </div>
         <div className="m3-card filled">
           <div className="m3-label">Today</div>
           <div className="kpi">{daily.averageDailyUseKwh} kWh</div>
-          <div className="kpi-sub"><span className="up">+{daily.dailyChangePct}%</span> vs yesterday avg</div>
+          <div className="kpi-sub"><span className="good">+{daily.dailyChangePct}%</span> vs yesterday</div>
         </div>
         <div className="m3-card filled">
           <div className="m3-label">Estimated bill</div>
-          <div className="kpi">${billing.current?.amount?.toFixed(2) || '123.50'}</div>
-          <div className="kpi-sub">{billing.current?.due || 'Due Oct 15'} · <Link to="/bills" className="link">Breakdown</Link></div>
+          <div className="kpi">${billing.current?.amount?.toFixed(2) || '0.00'}</div>
+          <div className="kpi-sub">{billing.current?.due || 'Due Next Cycle'} · <Link to="/bills" className="link">Breakdown</Link></div>
         </div>
         <div className="m3-card filled">
           <div className="m3-label">Budget · Monthly</div>
-          <div className="kpi">${budget.currentSpent?.toFixed(0) || '118'} <span style={{ fontSize: '1rem', fontWeight: 400 }}>/ ${budget.monthlyBudget?.toFixed(0) || '150'}</span></div>
-          <div className="m3-linear" style={{ marginTop: 10 }}><div style={{ width: `${Math.min(100, budget.percentageUsed || 79)}%` }} /></div>
-          <div className="kpi-sub" style={{ marginTop: 8 }}>{budget.percentageUsed}% used</div>
+          <div className="kpi">${budget.currentSpent?.toFixed(0) || '0'} <span style={{ fontSize: '1rem', fontWeight: 400 }}>/ ${budget.monthlyBudget?.toFixed(0) || '150'}</span></div>
+          <div className="m3-linear" style={{ marginTop: 10 }}><div style={{ width: `${Math.min(100, budget.percentageUsed || 0)}%` }} /></div>
+          <div className="kpi-sub" style={{ marginTop: 8 }}>{budget.percentageUsed || 0}% used</div>
         </div>
       </div>
 
@@ -148,35 +157,50 @@ export default function Dashboard() {
             <button className="m3-btn text" onClick={() => nav('/usage')}>Details <ArrowRight size={15} /></button>
           </div>
           <div className="chart-box">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weekly}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
-                <XAxis dataKey="d" tick={{ fill: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ background: 'var(--md-sys-color-surface-container-highest)', border: 'none', borderRadius: 12 }} />
-                <Area type="monotone" dataKey="kwh" stroke="var(--md-sys-color-primary)" fill="var(--md-sys-color-primary-container)" strokeWidth={3} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {weekly.length > 0 && weekly.some(w => w.kwh > 0) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={weekly}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--md-sys-color-outline-variant)" />
+                  <XAxis dataKey="d" tick={{ fill: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--md-sys-color-on-surface-variant)', fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ background: 'var(--md-sys-color-surface-container-highest)', border: 'none', borderRadius: 12 }} />
+                  <Area type="monotone" dataKey="kwh" stroke="var(--md-sys-color-primary)" fill="var(--md-sys-color-primary-container)" strokeWidth={3} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--md-sys-color-outline)' }}>
+                <p className="m3-body">Awaiting sensor data from ESP32 or external devices.</p>
+              </div>
+            )}
           </div>
         </div>
         <div className="m3-card">
           <div className="card-top">
-            <div><h3 className="m3-headline">Devices</h3><p className="m3-body">Use a switch to toggle a plug</p></div>
+            <div><h3 className="m3-headline">Devices</h3><p className="m3-body">Connected sensors &amp; smart plugs</p></div>
             <button className="m3-btn text" onClick={() => nav('/devices')}>Manage <ArrowRight size={15} /></button>
           </div>
           <div className="m3-list">
-            {devices.slice(0, 4).map(d => (
-              <div className="m3-list-item" key={d.id}>
-                <div className="leading"><d.icon size={22} /></div>
-                <div className="meta"><b>{d.name}</b><span>{d.room} · {((d.watts || 0) / 1000).toFixed(2)} kW</span></div>
-                <Switch checked={d.on} onChange={v => toggle(d.id, v)} label={d.name} />
+            {devices.length > 0 ? (
+              devices.slice(0, 4).map(d => (
+                <div className="m3-list-item" key={d.id}>
+                  <div className="leading"><d.icon size={22} /></div>
+                  <div className="meta"><b>{d.name}</b><span>{d.room} · {((d.watts || 0) / 1000).toFixed(2)} kW ({d.currentAmps || 0} A)</span></div>
+                  <Switch checked={d.on} onChange={v => toggle(d.id, v)} label={d.name} />
+                </div>
+              ))
+            ) : (
+              <div style={{ padding: '24px 8px', textAlign: 'center' }}>
+                <p className="m3-body" style={{ opacity: 0.8 }}>No devices connected yet.</p>
+                <button className="m3-btn tonal" style={{ marginTop: 8 }} onClick={() => nav('/connect')}>
+                  <Plus size={16} /> Connect ESP32 or smart plug
+                </button>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
 
-      <h2 className="m3-headline" style={{ margin: '28px 0 14px' }}>Connect your smart plug</h2>
+      <h2 className="m3-headline" style={{ margin: '28px 0 14px' }}>Quick actions &amp; guides</h2>
       <div className="grid grid-3">
         {recommendations.slice(0, 6).map(r => (
           <div className="m3-card outlined" key={r.title}>
@@ -190,4 +214,3 @@ export default function Dashboard() {
     </>
   )
 }
-

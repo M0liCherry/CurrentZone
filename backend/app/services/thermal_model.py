@@ -38,6 +38,17 @@ class TransformerThermalModel:
         load_ratio_k = current_rms / rated_current
         load_pct = round(load_ratio_k * 100.0, 1)
         
+        if current_rms <= 0.05:
+            # Idle / zero load: transformer is at ambient temperature
+            return {
+                "load_pct": 0.0,
+                "top_oil_temp_c": round(ambient_temp_c, 1),
+                "hot_spot_temp_c": round(ambient_temp_c, 1),
+                "thermal_stress_score": 0.0,
+                "loss_of_life_factor": 1.0,
+                "is_thermal_overload": False
+            }
+        
         # Steady-state top-oil temperature rise over ambient
         loss_ratio = (math.pow(load_ratio_k, 2) * cls.R_RATIO + 1.0) / (cls.R_RATIO + 1.0)
         delta_theta_to_steady = cls.DELTA_THETA_TO_R * math.pow(max(0.01, loss_ratio), cls.EXP_N)
@@ -45,13 +56,14 @@ class TransformerThermalModel:
         # Dynamic top-oil rise with thermal time constant tau_oil (~2.5 hours = 150 mins)
         tau_oil = 150.0
         alpha = 1.0 - math.exp(-max(1.0, overload_duration_minutes) / tau_oil)
-        delta_theta_to = delta_theta_to_steady * alpha + (cls.DELTA_THETA_TO_R * 0.5) * (1.0 - alpha)
+        delta_theta_to = delta_theta_to_steady * alpha
         
         top_oil_temp = ambient_temp_c + delta_theta_to
         
         # Hot-spot temperature rise over top-oil
         delta_theta_h = (cls.DELTA_THETA_H_R - cls.DELTA_THETA_TO_R) * math.pow(load_ratio_k, 2.0 * cls.EXP_M)
         hot_spot_temp = top_oil_temp + delta_theta_h
+
         
         # Aging acceleration factor FAA (Arrhenius rate equation)
         # Reference temperature is 110 °C hot-spot

@@ -14,13 +14,13 @@
 static const char *TAG = "SMARTWATT_MAIN";
 
 #ifndef WIFI_SSID
-#define WIFI_SSID           "SmartWatt_Grid_AP"
+#define WIFI_SSID           "Pegasis C2"
 #endif
 #ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD       "smartwatt2026"
+#define WIFI_PASSWORD       "Hydroarchon"
 #endif
 #ifndef BACKEND_POST_URL
-#define BACKEND_POST_URL    "http://192.168.1.100:8000/api/telemetry/ingest"
+#define BACKEND_POST_URL    "http://10.33.52.143:8000/api/telemetry/ingest"
 #endif
 #ifndef DEVICE_ID
 #define DEVICE_ID           "esp32_sct013_res_01"
@@ -33,7 +33,7 @@ static const char *TAG = "SMARTWATT_MAIN";
 // hardware (bench testing / frontend "Connect Device" demo). Set to 0
 // for real ADC measurements on device.
 #ifndef SMARTWATT_DUMMY_MODE
-#define SMARTWATT_DUMMY_MODE 1
+#define SMARTWATT_DUMMY_MODE 0
 #endif
 
 static void sct013_monitor_task(void *pvParameters)

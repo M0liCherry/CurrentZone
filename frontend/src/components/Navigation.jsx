@@ -1,11 +1,12 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Activity, Bell, House, Lightbulb, LogOut,
   Plug, Plus, Receipt, Scale, Settings, ShieldAlert, TrendingUp, Zap,
 } from 'lucide-react'
-import { notifications, user } from '../data/mockData'
+import { api } from '../services/api'
 
-const links = [
+const baseLinks = [
   { section: 'Monitor' },
   { to: '/', label: 'Dashboard', icon: House, end: true },
   { to: '/predictor', label: 'Outage Predictor', icon: ShieldAlert },
@@ -16,23 +17,30 @@ const links = [
   { to: '/bills', label: 'Bills', icon: Receipt },
   { to: '/budget', label: 'Budget & Alerts', icon: Scale },
   { to: '/recommendations', label: 'Save Energy', icon: Lightbulb },
-  { to: '/notifications', label: 'Notifications', icon: Bell, badge: notifications.filter(n => n.unread).length },
+  { to: '/notifications', label: 'Notifications', icon: Bell, isNotif: true },
   { section: 'System' },
   { to: '/connect', label: 'Connect Device', icon: Plus },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
-function Items({ onNav }) {
+function Items({ onNav, unreadCount = 0 }) {
   return (
     <>
-      {links.map((l, i) =>
+      {baseLinks.map((l, i) =>
         l.section ? (
           <div className="m3-nav-section" key={i}>{l.section}</div>
         ) : (
-          <NavLink key={l.to} to={l.to} end={l.end} onClick={onNav}
-            className={({ isActive }) => 'm3-nav-item' + (isActive ? ' active' : '')}>
+          <NavLink
+            key={l.to}
+            to={l.to}
+            end={l.end}
+            onClick={onNav}
+            className={({ isActive }) => 'm3-nav-item' + (isActive ? ' active' : '')}
+          >
             <span className="ico"><l.icon size={20} /></span>{l.label}
-            {l.badge ? <span className="m3-nav-badge">{l.badge}</span> : null}
+            {l.isNotif && unreadCount > 0 ? (
+              <span className="m3-nav-badge">{unreadCount}</span>
+            ) : null}
           </NavLink>
         )
       )}
@@ -41,20 +49,34 @@ function Items({ onNav }) {
 }
 
 export function Drawer({ onLogout }) {
+  const [currentUser, setCurrentUser] = useState({ name: 'Leslie Raymond', username: 'leslie294', initials: 'LR' })
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    let mounted = true
+    api.getUserProfile().then(u => {
+      if (mounted && u?.name) setCurrentUser(u)
+    })
+    api.getNotifications().then(notifs => {
+      if (mounted) setUnreadCount((notifs || []).filter(n => n.unread).length)
+    })
+    return () => { mounted = false }
+  }, [])
+
   return (
     <aside className="m3-drawer">
       <div className="brand">
         <div className="brand-mark"><Zap size={22} /></div>
         <div><b>CurrentZone</b><span>SmartWatt Energy</span></div>
       </div>
-      <Items />
+      <Items unreadCount={unreadCount} />
       <div className="drawer-foot">
         <div className="divider" />
         <div className="user-chip">
-          <div className="avatar">{user.initials}</div>
+          <div className="avatar">{currentUser.initials}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="m3-title-sm">{user.name}</div>
-            <div className="m3-body" style={{ fontSize: '.78rem' }}>@{user.username}</div>
+            <div className="m3-title-sm">{currentUser.name}</div>
+            <div className="m3-body" style={{ fontSize: '.78rem' }}>@{currentUser.username}</div>
           </div>
         </div>
         <button className="m3-btn tonal" style={{ width: '100%', marginTop: 12 }} onClick={onLogout}>
@@ -66,7 +88,7 @@ export function Drawer({ onLogout }) {
 }
 
 export function Rail({ onLogout }) {
-  const slim = links.filter(l => !l.section).slice(0, 8)
+  const slim = baseLinks.filter(l => !l.section).slice(0, 8)
   return (
     <nav className="m3-rail" aria-label="Primary">
       <div className="brand-mark" style={{ width: 48, marginBottom: 8 }}><Zap size={22} /></div>

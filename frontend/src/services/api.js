@@ -1,4 +1,3 @@
-import * as mockData from '../data/mockData'
 import {
   Refrigerator, Tv, Lamp, AirVent, Fan, Flame, Plug, Zap,
   TriangleAlert, Snowflake, Receipt, Lightbulb, Bell, CircleDollarSign
@@ -18,6 +17,9 @@ const iconMap = {
   fan: Fan,
   heater: Flame,
   water_heater: Flame,
+  sct: Zap,
+  sensor: Zap,
+  monitor: Zap,
   default: Plug,
 }
 
@@ -31,7 +33,7 @@ export function getDeviceIcon(name = '', type = '') {
 
 export function getNotificationIcon(category = '', title = '') {
   const s = (category + ' ' + title).toLowerCase()
-  if (s.includes('alert') || s.includes('budget') || s.includes('warning')) return TriangleAlert
+  if (s.includes('alert') || s.includes('budget') || s.includes('warning') || s.includes('risk')) return TriangleAlert
   if (s.includes('ac') || s.includes('cool') || s.includes('temp')) return Snowflake
   if (s.includes('bill') || s.includes('receipt') || s.includes('cost')) return Receipt
   if (s.includes('tip') || s.includes('save')) return Lightbulb
@@ -39,21 +41,25 @@ export function getNotificationIcon(category = '', title = '') {
 }
 
 async function request(endpoint, options = {}) {
+  const timeoutMs = options.timeout || 5000
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 4000)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  const headers = { ...(options.headers || {}) }
+  if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json'
+  }
 
   try {
     const res = await fetch(`${BASE_URL}${endpoint}`, {
       ...options,
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
+      headers,
     })
     clearTimeout(timeoutId)
     if (!res.ok) {
-      throw new Error(`API error ${res.status}: ${res.statusText}`)
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.detail || `API error ${res.status}: ${res.statusText}`)
     }
     return await res.json()
   } catch (err) {
@@ -73,24 +79,23 @@ export const api = {
     }
   },
 
-  // Devices & Smart Plugs
+  // Devices & Smart Plugs (backed by ESP32 / real external devices)
   async getDevices() {
     try {
       const raw = await request('/api/devices/')
-      return raw.map(d => ({
+      return (raw || []).map(d => ({
         id: d.id,
         name: d.name,
         room: d.room || 'General',
         icon: getDeviceIcon(d.name, d.device_type),
-        on: d.is_online,
-        watts: d.current_power_w || (d.is_online ? 120 : 0),
-        todayKwh: Number((d.daily_kwh || (d.is_online ? 1.5 : 0)).toFixed(1)),
-        currentAmps: d.current_amps,
+        on: Boolean(d.is_online),
+        watts: d.current_power_w || 0,
+        todayKwh: Number((d.daily_kwh || 0).toFixed(2)),
+        currentAmps: d.current_amps || 0,
         zone: d.zone,
       }))
     } catch (err) {
-      console.warn('Backend unavailable, using mock devices', err)
-      return mockData.devices
+      return []
     }
   },
 
@@ -102,39 +107,30 @@ export const api = {
   },
 
   async connectDevice(deviceId) {
-    try {
-      return await request(`/api/devices/${encodeURIComponent(deviceId)}/connect`, {
-        method: 'POST',
-      })
-    } catch {
-      return {
-        success: true,
-        device_id: deviceId,
-        pairing_status: 'CONNECTED',
-        message: 'Device connected in offline simulation mode.',
-      }
-    }
+    return await request(`/api/devices/${encodeURIComponent(deviceId)}/connect`, {
+      method: 'POST',
+    })
   },
 
-  // Usage Analytics
+  // Usage Analytics (dynamically computed from telemetry readings)
   async getDailyUsage() {
     try {
       const data = await request('/api/usage/daily')
-      const slots = data.slots || data.chart || []
+      const slots = data.slots || []
       return {
-        averageDailyUseKwh: data.average_daily_kwh || data.average_daily_use_kwh || 28,
-        dailyChangePct: data.average_change_pct || data.daily_change_pct || 20.0,
-        comparedToYesterdayKwh: data.compared_to_yesterday_kwh || 5.0,
-        peakWindow: data.peak_window || '4PM – 8PM',
-        chart: slots.map(c => ({ t: c.time_label || c.time_slot || c.t, kwh: c.kwh })),
+        averageDailyUseKwh: data.average_daily_kwh || 0,
+        dailyChangePct: data.average_change_pct || 0,
+        comparedToYesterdayKwh: data.compared_to_yesterday_kwh || 0,
+        peakWindow: data.peak_window || '--',
+        chart: slots.map(c => ({ t: c.time_label || c.t, kwh: c.kwh || 0 })),
       }
     } catch {
       return {
-        averageDailyUseKwh: 28,
-        dailyChangePct: 20.0,
-        comparedToYesterdayKwh: 5.0,
-        peakWindow: '4PM – 8PM',
-        chart: mockData.dailyUsage,
+        averageDailyUseKwh: 0,
+        dailyChangePct: 0,
+        comparedToYesterdayKwh: 0,
+        peakWindow: '--',
+        chart: [],
       }
     }
   },
@@ -142,15 +138,15 @@ export const api = {
   async getWeeklyUsage() {
     try {
       const data = await request('/api/usage/weekly')
-      const days = data.days || data.chart || []
+      const days = data.days || []
       return {
-        totalWeeklyKwh: data.total_week_kwh || data.total_weekly_kwh || 186.0,
-        chart: days.map(c => ({ d: c.day || c.day_label || c.d, kwh: c.kwh })),
+        totalWeeklyKwh: data.total_week_kwh || 0,
+        chart: days.map(c => ({ d: c.day || c.d, kwh: c.kwh || 0 })),
       }
     } catch {
       return {
-        totalWeeklyKwh: 186.0,
-        chart: mockData.weeklyUsage,
+        totalWeeklyKwh: 0,
+        chart: [],
       }
     }
   },
@@ -158,71 +154,137 @@ export const api = {
   async getMonthlyUsage() {
     try {
       const data = await request('/api/usage/monthly')
-      const months = data.months || data.chart || []
+      const months = data.months || []
       return {
-        totalAnnualKwh: data.total_year_kwh || data.total_annual_kwh || 3710.0,
-        chart: months.map(c => ({ m: c.month || c.month_label || c.m, kwh: c.kwh })),
+        totalAnnualKwh: data.total_year_kwh || 0,
+        chart: months.map(c => ({ m: c.month || c.m, kwh: c.kwh || 0 })),
       }
     } catch {
       return {
-        totalAnnualKwh: 3710.0,
-        chart: mockData.monthlyUsage,
+        totalAnnualKwh: 0,
+        chart: [],
       }
     }
   },
 
-  // Insights
+  // Insights (dynamically computed from real devices and telemetry)
   async getBedroomInsights() {
     try {
       const data = await request('/api/insights/bedroom')
-      const breakdown = data.plug_breakdown || data.plugs || []
+      const breakdown = data.plug_breakdown || []
       return {
-        totalKwh: data.total_kwh || data.total_consumption_kwh || 120,
-        peakKwh: data.peak_kwh || data.peak_consumption_kwh || 50,
-        ratingAverage: data.rating || data.rating_average || 4.5,
-        totalReviews: data.reviews_count || data.total_reviews || 120,
+        totalKwh: data.total_kwh || 0,
+        peakKwh: data.peak_kwh || 0,
+        ratingAverage: data.rating || 5.0,
+        totalReviews: data.reviews_count || breakdown.length,
         plugs: breakdown.map(p => ({
-          name: p.name || p.plug_name,
-          kwh: p.kwh,
-          pct: p.percentage || p.percentage_share || 0,
+          name: p.name || 'Device',
+          kwh: p.kwh || 0,
+          pct: p.percentage || 0,
         })),
       }
     } catch {
       return {
-        totalKwh: 120,
-        peakKwh: 50,
-        ratingAverage: 4.5,
-        totalReviews: 120,
-        plugs: [
-          { name: 'A.C.', kwh: 45, pct: 37.5 },
-          { name: 'Fan', kwh: 30, pct: 25.0 },
-          { name: 'Light A', kwh: 25, pct: 20.8 },
-        ],
+        totalKwh: 0,
+        peakKwh: 0,
+        ratingAverage: 5.0,
+        totalReviews: 0,
+        plugs: [],
       }
     }
   },
 
-  // Billing & Cost Estimation
+  // Dynamic Recommendations (computed from real telemetry & tariffs)
+  async getRecommendations() {
+    try {
+      const data = await request('/api/insights/recommendations')
+      return {
+        totalSavings: data.total_potential_savings_usd || 0,
+        summary: data.summary || 'Derived from live ESP32 telemetry',
+        tips: data.tips || [],
+      }
+    } catch {
+      return {
+        totalSavings: 0,
+        summary: 'Derived from live ESP32 telemetry',
+        tips: [],
+      }
+    }
+  },
+
+  // Billing & Cost Estimation (computed from real energy * tariff)
   async getBillingSummary() {
     try {
       const data = await request('/api/billing/summary')
       return {
         current: {
-          amount: data.current_bill.estimated_amount_usd,
-          due: data.current_bill.due_date,
-          status: data.current_bill.status,
+          amount: data.current_bill?.estimated_bill_usd || 0,
+          due: data.current_bill?.due_date || 'Due Next Cycle',
+          projectedKwh: data.current_bill?.projected_kwh || 0,
+          kwhSoFar: data.current_bill?.kwh_so_far || 0,
+          ratePerKwh: data.current_bill?.rate_per_kwh || 0.15,
+          fixedCharges: data.current_bill?.fixed_charges || 0,
+          taxAmount: data.current_bill?.tax_amount || 0,
+          tariffSource: data.current_bill?.tariff_source || 'Standard Utility Tariff',
+          daysElapsed: data.current_bill?.days_elapsed || 1,
+          daysRemaining: data.current_bill?.days_remaining || 29,
+          status: 'Pending',
         },
-        past: data.past_bills.map(b => ({
-          month: b.billing_cycle,
+        past: (data.past_bills || []).map(b => ({
+          id: b.id,
+          month: b.month_year || b.billing_cycle,
           due: b.due_date,
           status: b.status,
           amount: b.amount_usd,
+          energyKwh: b.energy_kwh || 0,
+          ratePerKwh: b.rate_per_kwh || 0.15,
+          fixedCharges: b.fixed_charges || 0,
+          imagePath: b.image_path,
         })),
-        savings: data.estimated_savings_this_month_usd,
+        savings: data.estimated_savings_this_month_usd || 0,
       }
     } catch {
-      return mockData.bills
+      return {
+        current: {
+          amount: 0,
+          due: 'Due Next Cycle',
+          projectedKwh: 0,
+          kwhSoFar: 0,
+          ratePerKwh: 0.15,
+          fixedCharges: 0,
+          taxAmount: 0,
+          tariffSource: 'Standard Utility Tariff',
+          daysElapsed: 1,
+          daysRemaining: 29,
+          status: 'Pending',
+        },
+        past: [],
+        savings: 0,
+      }
     }
+  },
+
+  async uploadBill(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return await request('/api/billing/upload-bill', {
+      method: 'POST',
+      body: formData,
+      timeout: 30000,
+    })
+  },
+
+  async confirmBill(billData) {
+    return await request('/api/billing/confirm-bill', {
+      method: 'POST',
+      body: JSON.stringify(billData),
+    })
+  },
+
+  async deleteBill(billId) {
+    return await request(`/api/billing/${billId}`, {
+      method: 'DELETE',
+    })
   },
 
   // Budget & Alerts
@@ -230,19 +292,19 @@ export const api = {
     try {
       const data = await request('/api/budgets/')
       return {
-        monthlyBudget: data.monthly_budget_usd,
-        currentSpent: data.current_spent_usd,
-        remaining: data.remaining_budget_usd,
-        percentageUsed: data.percentage_used,
-        alertTriggered: data.alert_triggered,
-        status: data.status,
+        monthlyBudget: data.monthly_budget_usd || 150,
+        currentSpent: data.current_spent_usd || 0,
+        remaining: data.remaining_budget_usd ?? 150,
+        percentageUsed: data.percentage_used || 0,
+        alertTriggered: Boolean(data.alert_triggered),
+        status: data.status || 'ON_TRACK',
       }
     } catch {
       return {
         monthlyBudget: 150,
-        currentSpent: 118,
-        remaining: 32,
-        percentageUsed: 79,
+        currentSpent: 0,
+        remaining: 150,
+        percentageUsed: 0,
         alertTriggered: false,
         status: 'ON_TRACK',
       }
@@ -257,29 +319,29 @@ export const api = {
       })
       return {
         monthlyBudget: data.monthly_budget_usd,
-        currentSpent: data.current_spent_usd,
+        currentSpent: data.current_spent_usd || 0,
         remaining: data.remaining_budget_usd,
-        percentageUsed: data.percentage_used,
-        alertTriggered: data.alert_triggered,
-        status: data.status,
+        percentageUsed: data.percentage_used || 0,
+        alertTriggered: Boolean(data.alert_triggered),
+        status: data.status || 'ON_TRACK',
       }
     } catch {
       return {
-        monthlyBudget: payload.monthly_budget_usd,
-        currentSpent: 118,
-        remaining: Math.max(0, payload.monthly_budget_usd - 118),
-        percentageUsed: Math.min(100, Math.round((118 / payload.monthly_budget_usd) * 100)),
+        monthlyBudget: payload.monthly_budget_usd || 150,
+        currentSpent: 0,
+        remaining: payload.monthly_budget_usd || 150,
+        percentageUsed: 0,
         alertTriggered: false,
         status: 'ON_TRACK',
       }
     }
   },
 
-  // Notifications
+  // Notifications (dynamically logged by backend)
   async getNotifications() {
     try {
       const raw = await request('/api/notifications/')
-      return raw.map(n => ({
+      return (raw || []).map(n => ({
         id: n.id,
         title: n.title,
         desc: n.description,
@@ -289,7 +351,7 @@ export const api = {
         icon: getNotificationIcon(n.category, n.title),
       }))
     } catch {
-      return mockData.notifications
+      return []
     }
   },
 
@@ -297,7 +359,7 @@ export const api = {
     try {
       await request(`/api/notifications/${id}/read`, { method: 'POST' })
     } catch {
-      // offline no-op
+      // no-op
     }
   },
 
@@ -307,37 +369,14 @@ export const api = {
       return await request('/api/predictor/overview')
     } catch {
       return {
-        status: 'simulated',
-        monitored_transformers_count: 3,
+        status: 'offline',
+        monitored_transformers_count: 0,
         critical_risk_zones: 0,
-        high_risk_zones: 1,
+        high_risk_zones: 0,
         overall_grid_status: 'STABLE',
-        ambient_heat_index: 34.2,
-        max_wind_gust_kmh: 22.0,
-        zones: [
-          {
-            transformer_id: 'TX-RES-01',
-            transformer_name: 'Substation Alpha - Residential South',
-            zone: 'Residential South',
-            risk_level: 'MODERATE',
-            failure_probability_pct: 35.5,
-            current_load_pct: 78.0,
-            top_oil_temp_c: 88.5,
-            estimated_ttf_minutes: null,
-            all_mitigations: ['Monitor ambient heat rise', 'Maintain normal operating schedules'],
-          },
-          {
-            transformer_id: 'TX-IND-04',
-            transformer_name: 'Substation Gamma - Industrial Corridor',
-            zone: 'Industrial Corridor',
-            risk_level: 'HIGH',
-            failure_probability_pct: 62.0,
-            current_load_pct: 95.0,
-            top_oil_temp_c: 101.2,
-            estimated_ttf_minutes: 145,
-            all_mitigations: ['Engage forced-air cooling fans', 'Alert industrial dispatch to curtail peak load'],
-          },
-        ],
+        ambient_heat_index: 25.0,
+        max_wind_gust_kmh: 0,
+        zones: [],
       }
     }
   },
@@ -351,44 +390,33 @@ export const api = {
   },
 
   async simulateScenario(payload) {
-    try {
-      return await request('/api/predictor/simulate', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      })
-    } catch {
-      // Offline fallback computation
-      const load = payload.current_rms ? (payload.current_rms / 100.0) * 100 : 85.0
-      const prob = Math.min(99.0, Math.round(load * 0.4 + (payload.ambient_temp_c || 25) * 1.2 + (payload.wind_gust_kmh || 10) * 0.3))
-      return {
-        zone: payload.zone || 'Residential South',
-        transformer_id: payload.transformer_id || 'TX-RES-01',
-        failure_probability_pct: prob,
-        risk_level: prob > 70 ? 'CRITICAL' : prob > 45 ? 'HIGH' : 'MODERATE',
-        estimated_ttf_minutes: prob > 60 ? Math.max(15, Math.round(300 - prob * 2.5)) : null,
-        simulated_load_pct: Math.round(load),
-        simulated_oil_temp_c: Number((65 + (load * 0.35) + ((payload.ambient_temp_c || 25) * 0.4)).toFixed(1)),
-        primary_factors: ['Thermal load accumulation', 'Weather ambient heat'],
-        mitigation_actions: ['Initiate selective load shedding', 'Dispatch field inspection team'],
-      }
-    }
+    return await request('/api/predictor/simulate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
   },
 
-  // User Profile / Auth
+  // User Profile
   async getUserProfile() {
     try {
       const data = await request('/api/auth/me')
       return {
-        name: data.full_name,
-        username: data.username,
-        email: data.email,
-        initials: data.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
-        role: data.role,
-        zone: data.zone,
-        householdSize: data.household_size,
+        name: data.full_name || 'User',
+        username: data.username || 'user',
+        email: data.email || '',
+        initials: (data.full_name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+        phone: data.phone || '',
+        birthday: data.birthday || '',
       }
     } catch {
-      return mockData.user
+      return {
+        name: 'User',
+        username: 'user',
+        email: '',
+        initials: 'U',
+        phone: '',
+        birthday: '',
+      }
     }
   },
 }

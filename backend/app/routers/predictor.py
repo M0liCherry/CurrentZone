@@ -23,12 +23,14 @@ def get_grid_overview(db: Session = Depends(get_db)):
     high_count = 0
     
     for tx in transformers:
-        # Get latest reading or default
+        # Get latest reading or 0.0 if awaiting telemetry
         latest_reading = db.query(TelemetryReading)\
             .filter(TelemetryReading.transformer_id == tx.id)\
             .order_by(TelemetryReading.timestamp.desc()).first()
             
-        current = latest_reading.current_rms if latest_reading else (tx.rated_kva * 0.45)
+        now = datetime.utcnow()
+        is_live = bool(latest_reading and (now - latest_reading.timestamp).total_seconds() <= 10.0)
+        current = latest_reading.current_rms if is_live else 0.0
         rated_current = 100.0
         
         pred = outage_predictor.predict_outage_risk(
@@ -41,6 +43,11 @@ def get_grid_overview(db: Session = Depends(get_db)):
             installation_year=tx.installation_year,
             hour_of_day=datetime.utcnow().hour
         )
+        if not is_live:
+            pred["primary_factors"] = ["ESP32 sensor is disconnected or offline. No live telemetry stream."]
+            pred["recommended_action"] = "Reconnect ESP32 monitor to resume live telemetry."
+            pred["all_mitigations"] = ["Reconnect ESP32 monitor to resume live telemetry."]
+
         if pred["risk_level"] == "CRITICAL":
             critical_count += 1
         elif pred["risk_level"] == "HIGH":
@@ -72,7 +79,7 @@ def get_all_zones_risk(db: Session = Depends(get_db)):
     for tx in transformers:
         latest = db.query(TelemetryReading).filter(TelemetryReading.transformer_id == tx.id)\
             .order_by(TelemetryReading.timestamp.desc()).first()
-        current = latest.current_rms if latest else (tx.rated_kva * 0.45)
+        current = latest.current_rms if latest else 0.0
         rated_current = 100.0
         
         pred = outage_predictor.predict_outage_risk(
@@ -98,7 +105,7 @@ def get_transformer_risk(transformer_id: str, db: Session = Depends(get_db)):
         
     latest = db.query(TelemetryReading).filter(TelemetryReading.transformer_id == tx.id)\
         .order_by(TelemetryReading.timestamp.desc()).first()
-    current = latest.current_rms if latest else 45.0
+    current = latest.current_rms if latest else 0.0
     rated_current = 100.0
     
     return outage_predictor.predict_outage_risk(
@@ -110,6 +117,7 @@ def get_transformer_risk(transformer_id: str, db: Session = Depends(get_db)):
         rated_kva=tx.rated_kva,
         installation_year=tx.installation_year
     )
+
 
 @router.post("/simulate", response_model=SimulationResult)
 def simulate_scenario(scenario: ScenarioSimulationRequest, db: Session = Depends(get_db)):

@@ -54,3 +54,8 @@ desktop.ini
 .env
 .env.*
 !.env.example
+
+# Local Uploads & Scratch
+backend/scratch/
+backend/uploads/*
+!backend/uploads/bills/.gitkeep

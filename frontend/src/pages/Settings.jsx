@@ -1,7 +1,6 @@
 import { useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, CircleHelp, Palette, ShieldAlert, SlidersHorizontal } from 'lucide-react'
-import { user as seedUser } from '../data/mockData'
 import { Switch, Snackbar } from '../components/ui'
 import { AppUI } from '../App'
 import { api } from '../services/api'
@@ -18,9 +17,16 @@ function Row({ label, value, action }) {
 export default function Settings() {
   const nav = useNavigate()
   const { openTheme } = useContext(AppUI)
-  const [profile, setProfile] = useState(seedUser)
+  const [profile, setProfile] = useState({
+    name: 'Leslie Raymond',
+    username: 'leslie294',
+    birthday: 'July 17, 1989',
+    mobile: '(405) 439 - 3985',
+    email: 'leslie@gmail.com',
+  })
   const [prefs, setPrefs] = useState({ location: true, push: true, green: false })
   const [snack, setSnack] = useState('')
+
 
   useEffect(() => {
     let mounted = true

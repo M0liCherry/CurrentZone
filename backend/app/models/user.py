@@ -61,8 +61,12 @@ class BillRecord(Base):
     amount_usd = Column(Float, nullable=False)
     due_date = Column(String(32), nullable=False)  # "Nov 15", "Due Oct 15"
     status = Column(String(32), default="Paid")  # "Paid", "Pending"
-    energy_kwh = Column(Float, default=320.0)
-    savings_usd = Column(Float, default=20.0)
+    energy_kwh = Column(Float, default=0.0)
+    rate_per_kwh = Column(Float, default=0.15)
+    fixed_charges = Column(Float, default=0.0)
+    tax_amount = Column(Float, default=0.0)
+    savings_usd = Column(Float, default=0.0)
+    image_path = Column(String(256), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     user = relationship("User", back_populates="bills")

@@ -24,24 +24,8 @@ export function connectDevice(deviceId = DEFAULT_DEVICE_ID) {
   return request(`/api/devices/${encodeURIComponent(deviceId)}/connect`, { method: 'POST' })
 }
 
-export function startDummyStream(deviceId = DEFAULT_DEVICE_ID, opts = {}) {
-  return request(`/api/devices/${encodeURIComponent(deviceId)}/dummy-stream/start`, {
-    method: 'POST',
-    body: JSON.stringify({
-      transformer_id: opts.transformerId || 'TX-RES-01',
-      interval_s: opts.intervalS || 3.0,
-    }),
-  })
+export function latestTelemetry(transformerId) {
+  const q = transformerId ? `?transformer_id=${encodeURIComponent(transformerId)}` : ''
+  return request(`/api/telemetry/latest${q}`)
 }
 
-export function stopDummyStream(deviceId = DEFAULT_DEVICE_ID) {
-  return request(`/api/devices/${encodeURIComponent(deviceId)}/dummy-stream/stop`, { method: 'POST' })
-}
-
-export function dummyStreamStatus(deviceId = DEFAULT_DEVICE_ID) {
-  return request(`/api/devices/${encodeURIComponent(deviceId)}/dummy-stream/status`)
-}
-
-export function latestTelemetry() {
-  return request('/api/telemetry/latest')
-}

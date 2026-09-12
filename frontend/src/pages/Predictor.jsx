@@ -33,6 +33,15 @@ export default function Predictor() {
 
   useEffect(() => {
     fetchOverview()
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.getGridOverview()
+        setOverview(data)
+      } catch {
+        // ignore background poll errors
+      }
+    }, 3000)
+    return () => clearInterval(interval)
   }, [])
 
   const runSimulation = async (e) => {
@@ -97,7 +106,7 @@ export default function Predictor() {
             {overview?.overall_grid_status || 'STABLE'}
           </div>
           <div className="kpi-sub">
-            {overview?.monitored_transformers_count || 3} Distribution Transformers
+            {overview?.monitored_transformers_count ?? overview?.zones?.length ?? 0} Distribution Transformers
           </div>
         </div>
 
@@ -114,7 +123,7 @@ export default function Predictor() {
         <div className="m3-card filled">
           <div className="m3-label">Ambient Heat Index</div>
           <div className="kpi">
-            {overview?.ambient_heat_index ? `${overview.ambient_heat_index.toFixed(1)}°C` : '34.2°C'}
+            {overview?.ambient_heat_index != null ? `${overview.ambient_heat_index.toFixed(1)}°C` : '—'}
           </div>
           <div className="kpi-sub">
             <Thermometer size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
@@ -125,7 +134,7 @@ export default function Predictor() {
         <div className="m3-card filled">
           <div className="m3-label">Max Wind Gust</div>
           <div className="kpi">
-            {overview?.max_wind_gust_kmh ? `${overview.max_wind_gust_kmh.toFixed(0)} km/h` : '22 km/h'}
+            {overview?.max_wind_gust_kmh != null ? `${overview.max_wind_gust_kmh.toFixed(0)} km/h` : '—'}
           </div>
           <div className="kpi-sub">
             <Wind size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
@@ -224,8 +233,9 @@ export default function Predictor() {
               id="sim-zone"
               value={transformerId}
               onChange={(e) => {
+                const selected = overview?.zones?.find(z => z.transformer_id === e.target.value)
                 setTransformerId(e.target.value)
-                setZone(e.target.value === 'TX-IND-04' ? 'Industrial Corridor' : 'Residential South')
+                if (selected) setZone(selected.zone)
               }}
               style={{
                 width: '100%',
@@ -236,9 +246,15 @@ export default function Predictor() {
                 color: 'var(--md-sys-color-on-surface)',
               }}
             >
-              <option value="TX-RES-01">TX-RES-01 (Residential South, 100 kVA)</option>
-              <option value="TX-IND-04">TX-IND-04 (Industrial Corridor, 250 kVA)</option>
-              <option value="TX-COM-02">TX-COM-02 (Commercial Downtown, 150 kVA)</option>
+              {(overview?.zones && overview.zones.length > 0) ? (
+                overview.zones.map((z) => (
+                  <option key={z.transformer_id} value={z.transformer_id}>
+                    {z.transformer_id} ({z.zone})
+                  </option>
+                ))
+              ) : (
+                <option value="TX-RES-01">TX-RES-01 (Residential South)</option>
+              )}
             </select>
           </div>
 

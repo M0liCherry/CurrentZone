@@ -1,140 +1,488 @@
-from typing import Dict, Any, List
-from datetime import datetime
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta
+import calendar
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from app.models.grid import TelemetryReading
+from app.models.user import Device, BillRecord
 
 class GridAnalyticsService:
     """
-    Computes consumption statistics, device breakdowns, billing estimations, 
-    and historical trends specifically aligning with the SmartWatt Figma UI.
+    Computes consumption statistics, device breakdowns, billing estimations,
+    and historical trends dynamically from real ESP32 & smart plug telemetry.
     """
     
     @classmethod
-    def get_daily_consumption(cls) -> Dict[str, Any]:
+    def get_daily_consumption(cls, db: Optional[Session] = None) -> Dict[str, Any]:
         """
-        Matches 'Usage Monitoring.png' Daily Consumption screen:
-        Slots: 12AM, 4AM, 8AM, 12PM, 4PM, 8PM
-        Average Daily Use: 28 kWh, +20%
-        Compared to Yesterday: +5 kWh
+        Computes today's consumption breakdown into 6 4-hour slots:
+        12AM (00-04), 4AM (04-08), 8AM (08-12), 12PM (12-16), 4PM (16-20), 8PM (20-24).
         """
-        slots = [
-            {"time_label": "12AM", "kwh": 3.2},
-            {"time_label": "4AM", "kwh": 2.1},
-            {"time_label": "8AM", "kwh": 4.8},
-            {"time_label": "12PM", "kwh": 6.5},
-            {"time_label": "4PM", "kwh": 5.9},
-            {"time_label": "8PM", "kwh": 7.4},
+        slot_defs = [
+            ("12AM", 0, 4),
+            ("4AM", 4, 8),
+            ("8AM", 8, 12),
+            ("12PM", 12, 16),
+            ("4PM", 16, 20),
+            ("8PM", 20, 24),
         ]
+        
+        if not db:
+            return {
+                "title": "Daily Consumption",
+                "subtitle": "Today",
+                "slots": [{"time_label": label, "kwh": 0.0} for label, _, _ in slot_defs],
+                "average_daily_kwh": 0.0,
+                "average_change_pct": 0.0,
+                "compared_to_yesterday_kwh": 0.0,
+                "compared_to_yesterday_pct": 0.0
+            }
+            
+        now = datetime.utcnow()
+        today_start = datetime(now.year, now.month, now.day)
+        yesterday_start = today_start - timedelta(days=1)
+        
+        # Query today's readings
+        today_readings = db.query(TelemetryReading).filter(
+            TelemetryReading.timestamp >= today_start
+        ).all()
+        
+        # Calculate kWh per 4-hour slot
+        slots = []
+        for label, start_h, end_h in slot_defs:
+            slot_readings = [
+                r for r in today_readings 
+                if start_h <= r.timestamp.hour < end_h
+            ]
+            if slot_readings:
+                avg_kw = sum(r.power_kw for r in slot_readings) / len(slot_readings)
+                slot_kwh = round(avg_kw * min(4.0, max(0.2, len(slot_readings) * (3.0 / 3600.0))), 2)
+                max_e = max(r.energy_kwh_total for r in slot_readings)
+                min_e = min(r.energy_kwh_total for r in slot_readings)
+                if max_e > min_e:
+                    slot_kwh = round(max_e - min_e, 2)
+            else:
+                slot_kwh = 0.0
+            slots.append({"time_label": label, "kwh": slot_kwh})
+            
+        total_today_kwh = round(sum(s["kwh"] for s in slots), 2)
+        
+        # Query yesterday's readings
+        yesterday_readings = db.query(TelemetryReading).filter(
+            TelemetryReading.timestamp >= yesterday_start,
+            TelemetryReading.timestamp < today_start
+        ).all()
+        
+        if yesterday_readings:
+            avg_yesterday_kw = sum(r.power_kw for r in yesterday_readings) / len(yesterday_readings)
+            total_yesterday_kwh = round(avg_yesterday_kw * 24.0, 2)
+            diff_kwh = round(total_today_kwh - total_yesterday_kwh, 2)
+            diff_pct = round((diff_kwh / total_yesterday_kwh) * 100.0, 1) if total_yesterday_kwh > 0 else 0.0
+        else:
+            diff_kwh = total_today_kwh
+            diff_pct = 0.0
+            
         return {
             "title": "Daily Consumption",
             "subtitle": "Today",
             "slots": slots,
-            "average_daily_kwh": 28.0,
-            "average_change_pct": 20.0,
-            "compared_to_yesterday_kwh": 5.0,
-            "compared_to_yesterday_pct": 18.5
+            "average_daily_kwh": total_today_kwh,
+            "average_change_pct": diff_pct,
+            "compared_to_yesterday_kwh": diff_kwh,
+            "compared_to_yesterday_pct": diff_pct
         }
 
     @classmethod
-    def get_weekly_consumption(cls) -> Dict[str, Any]:
+    def get_weekly_consumption(cls, db: Optional[Session] = None) -> Dict[str, Any]:
         """
-        Matches 'Usage Monitoring.png' Weekly Consumption: Mon to Sun
+        Computes weekly consumption for Monday through Sunday.
         """
-        days = [
-            {"day": "Mon", "kwh": 26.5},
-            {"day": "Tue", "kwh": 28.0},
-            {"day": "Wed", "kwh": 25.4},
-            {"day": "Thu", "kwh": 27.2},
-            {"day": "Fri", "kwh": 31.0},
-            {"day": "Sat", "kwh": 34.5},
-            {"day": "Sun", "kwh": 32.8},
-        ]
-        total = sum(d["kwh"] for d in days)
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        if not db:
+            return {
+                "title": "Weekly Consumption",
+                "subtitle": "This Week",
+                "days": [{"day": d, "kwh": 0.0} for d in day_names],
+                "total_week_kwh": 0.0
+            }
+            
+        now = datetime.utcnow()
+        week_start = datetime(now.year, now.month, now.day) - timedelta(days=now.weekday())
+        
+        days = []
+        for i, day_name in enumerate(day_names):
+            d_start = week_start + timedelta(days=i)
+            d_end = d_start + timedelta(days=1)
+            
+            readings = db.query(TelemetryReading).filter(
+                TelemetryReading.timestamp >= d_start,
+                TelemetryReading.timestamp < d_end
+            ).all()
+            
+            if readings:
+                max_e = max(r.energy_kwh_total for r in readings)
+                min_e = min(r.energy_kwh_total for r in readings)
+                if max_e > min_e:
+                    kwh = round(max_e - min_e, 2)
+                else:
+                    avg_kw = sum(r.power_kw for r in readings) / len(readings)
+                    kwh = round(avg_kw * max(0.5, len(readings) * (3.0 / 3600.0)), 2)
+            else:
+                kwh = 0.0
+            days.append({"day": day_name, "kwh": kwh})
+            
+        total = round(sum(d["kwh"] for d in days), 2)
         return {
             "title": "Weekly Consumption",
             "subtitle": "This Week",
             "days": days,
-            "total_week_kwh": round(total, 1)
+            "total_week_kwh": total
         }
 
     @classmethod
-    def get_monthly_consumption(cls) -> Dict[str, Any]:
+    def get_monthly_consumption(cls, db: Optional[Session] = None) -> Dict[str, Any]:
         """
-        Matches 'Usage Monitoring.png' Monthly Consumption: Last 12 Months
+        Computes monthly consumption for the past 12 months.
         """
-        months = [
-            {"month": "Jan", "kwh": 310.0},
-            {"month": "Feb", "kwh": 345.0},
-            {"month": "Mar", "kwh": 290.0},
-            {"month": "Apr", "kwh": 260.0},
-            {"month": "May", "kwh": 380.0},
-            {"month": "Jun", "kwh": 420.0},
-            {"month": "Jul", "kwh": 450.0},
-            {"month": "Aug", "kwh": 435.0},
-            {"month": "Sep", "kwh": 395.0},
-            {"month": "Oct", "kwh": 330.0},
-            {"month": "Nov", "kwh": 305.0},
-            {"month": "Dec", "kwh": 360.0},
-        ]
-        total = sum(m["kwh"] for m in months)
+        month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        if not db:
+            return {
+                "title": "Monthly Consumption",
+                "subtitle": "Last 12 Months",
+                "months": [{"month": m, "kwh": 0.0} for m in month_names],
+                "total_year_kwh": 0.0
+            }
+            
+        now = datetime.utcnow()
+        months = []
+        for m_idx, m_name in enumerate(month_names, start=1):
+            if m_idx > now.month:
+                months.append({"month": m_name, "kwh": 0.0})
+                continue
+                
+            m_start = datetime(now.year, m_idx, 1)
+            if m_idx == 12:
+                m_end = datetime(now.year + 1, 1, 1)
+            else:
+                m_end = datetime(now.year, m_idx + 1, 1)
+                
+            readings = db.query(TelemetryReading).filter(
+                TelemetryReading.timestamp >= m_start,
+                TelemetryReading.timestamp < m_end
+            ).all()
+            
+            if readings:
+                max_e = max(r.energy_kwh_total for r in readings)
+                min_e = min(r.energy_kwh_total for r in readings)
+                kwh = round(max_e - min_e, 1) if max_e > min_e else round(sum(r.power_kw for r in readings) * 0.05, 1)
+            else:
+                kwh = 0.0
+                
+            months.append({"month": m_name, "kwh": kwh})
+            
+        total = round(sum(m["kwh"] for m in months), 1)
         return {
             "title": "Monthly Consumption",
             "subtitle": "Last 12 Months",
             "months": months,
-            "total_year_kwh": round(total, 1)
+            "total_year_kwh": total
         }
 
     @classmethod
-    def get_bedroom_insights(cls) -> Dict[str, Any]:
+    def get_bedroom_insights(cls, db: Optional[Session] = None) -> Dict[str, Any]:
         """
-        Matches 'Insight.png' screen:
-        Bedroom Energy Consumption Overview
-        Total: 120 kWh, Last 7 Days +15%
-        Peak: 50 kWh, Last 7 Days -10%
-        Plugs: Light A, Fan, AC
-        Ratings: 4.5, 120 reviews
-        Detailed Insights: AC 45 kWh (37.5%), Fan 30 kWh (25%), Light 25 kWh (20.8%)
+        Computes energy consumption by connected plug/device.
         """
-        return {
-            "title": "Bedroom Energy Consumption Overview",
-            "total_kwh": 120.0,
-            "total_change_pct": 15.0,
-            "peak_kwh": 50.0,
-            "peak_change_pct": -10.0,
-            "plug_breakdown": [
-                {"name": "A.C.", "kwh": 45.0, "percentage": 37.5, "is_peak": True},
-                {"name": "Fan", "kwh": 30.0, "percentage": 25.0, "is_peak": False},
-                {"name": "Light", "kwh": 25.0, "percentage": 20.8, "is_peak": False},
-            ],
-            "rating": 4.5,
-            "reviews_count": 120,
-            "star_distribution": {
-                "5": 35.0,
-                "4": 30.0,
-                "3": 20.0,
-                "2": 10.0,
-                "1": 5.0
+        if not db:
+            return {
+                "title": "Appliance Energy Consumption Overview",
+                "total_kwh": 0.0,
+                "total_change_pct": 0.0,
+                "peak_kwh": 0.0,
+                "peak_change_pct": 0.0,
+                "plug_breakdown": [],
+                "rating": 5.0,
+                "reviews_count": 0,
+                "star_distribution": {"5": 0.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0}
             }
+            
+        devices = db.query(Device).filter(Device.user_id == 1).all()
+        if not devices:
+            return {
+                "title": "Appliance Energy Consumption Overview",
+                "total_kwh": 0.0,
+                "total_change_pct": 0.0,
+                "peak_kwh": 0.0,
+                "peak_change_pct": 0.0,
+                "plug_breakdown": [],
+                "rating": 5.0,
+                "reviews_count": 0,
+                "star_distribution": {"5": 0.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0}
+            }
+            
+        total_kwh = sum(d.daily_kwh for d in devices)
+        peak_kwh = max((d.daily_kwh for d in devices), default=0.0)
+        
+        breakdown = []
+        for d in devices:
+            pct = round((d.daily_kwh / total_kwh) * 100.0, 1) if total_kwh > 0 else 0.0
+            breakdown.append({
+                "name": d.name,
+                "kwh": round(d.daily_kwh, 1),
+                "percentage": pct,
+                "is_peak": (d.daily_kwh == peak_kwh and peak_kwh > 0)
+            })
+            
+        return {
+            "title": "Appliance Energy Consumption Overview",
+            "total_kwh": round(total_kwh, 1),
+            "total_change_pct": 0.0,
+            "peak_kwh": round(peak_kwh, 1),
+            "peak_change_pct": 0.0,
+            "plug_breakdown": breakdown,
+            "rating": 5.0,
+            "reviews_count": len(devices),
+            "star_distribution": {"5": 100.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0} if devices else {"5": 0.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0}
         }
 
     @classmethod
-    def get_billing_summary(cls) -> Dict[str, Any]:
+    def get_energy_recommendations(cls, db: Optional[Session] = None) -> Dict[str, Any]:
         """
-        Matches 'Cost Estimation.png' Bills screen:
-        Estimated Bill $123.50 Due Oct 15
-        Past Bills: Oct 2023 $150.20, Sep 2023 $135.75, Aug 2023 $160.40
-        Estimated Savings This Month: $20.00
-        Switch to Green Energy Promo
+        Generates dynamic energy-saving recommendations based on real telemetry,
+        power factor, active current, tariff rates, and paired devices.
+        No dummy/hardcoded appliances.
         """
+        if not db:
+            return {
+                "total_potential_savings_usd": 0.0,
+                "summary": "Connect ESP32 telemetry or smart devices to generate data-driven recommendations.",
+                "tips": []
+            }
+
+        latest = db.query(TelemetryReading).order_by(TelemetryReading.timestamp.desc()).first()
+        latest_bill = db.query(BillRecord).filter(BillRecord.user_id == 1).order_by(BillRecord.created_at.desc()).first()
+        rate = latest_bill.rate_per_kwh if latest_bill and latest_bill.rate_per_kwh else 0.15
+        devices = db.query(Device).filter(Device.user_id == 1).all()
+
+        tips = []
+        total_savings = 0.0
+
+        if latest:
+            current_a = latest.current_rms
+            voltage = latest.voltage_v or 230.0
+            power_kw = latest.power_kw or 0.0
+            apparent_kva = (voltage * current_a) / 1000.0
+            pf = min(1.0, max(0.1, power_kw / apparent_kva)) if apparent_kva > 0.05 else 1.0
+
+            # Power Factor Optimization
+            if pf and pf < 0.90 and current_a > 0.5:
+                est_loss_kwh = round(power_kw * (1.0 - pf) * 24 * 30, 1)
+                est_loss_cost = round(est_loss_kwh * rate, 2)
+                total_savings += est_loss_cost
+                tips.append({
+                    "title": "Power factor correction",
+                    "save": f"≈ ${est_loss_cost:.2f}/mo" if est_loss_cost > 0 else "Efficiency Gain",
+                    "impact": 78,
+                    "desc": f"Measured power factor is currently {pf:.2f}. Reactive inductive load draws unnecessary apparent power from your feeder.",
+                    "category": "power_factor"
+                })
+
+            # Peak Hours Load Shifting
+            hour = datetime.utcnow().hour
+            if current_a > 1.5:
+                shift_savings = round(power_kw * 0.3 * 30 * rate, 2)
+                total_savings += shift_savings
+                tips.append({
+                    "title": "Shift heavy loads to off-peak hours",
+                    "save": f"≈ ${shift_savings:.2f}/mo",
+                    "impact": 70,
+                    "desc": f"Current load is {current_a:.1f}A ({power_kw:.2f} kW). Running high-demand appliances after 9 PM reduces peak tariff charges and feeder strain.",
+                    "category": "peak_shaving"
+                })
+
+            # Baseline / Phantom Load
+            if current_a > 0.8:
+                phantom_kwh_month = round(current_a * 0.230 * 8 * 30, 1)
+                phantom_cost = round(phantom_kwh_month * rate, 2)
+                total_savings += phantom_cost
+                tips.append({
+                    "title": "Eliminate continuous baseline load",
+                    "save": f"≈ ${phantom_cost:.2f}/mo",
+                    "impact": 60,
+                    "desc": f"Continuous background load of {current_a:.1f}A detected. Switch off idle devices and smart strip peripherals overnight.",
+                    "category": "phantom_load"
+                })
+
+        # Connected Smart Devices (excluding grid sensors/monitors)
+        for d in devices:
+            if d.device_type in ["transformer_monitor", "grid_sensor", "sensor"]:
+                continue
+            if d.daily_kwh and d.daily_kwh > 1.0:
+                dev_cost = round(d.daily_kwh * 30 * rate, 2)
+                potential_dev_save = round(dev_cost * 0.15, 2)
+                total_savings += potential_dev_save
+                tips.append({
+                    "title": f"Optimize {d.name} operating schedule",
+                    "save": f"≈ ${potential_dev_save:.2f}/mo",
+                    "impact": 65,
+                    "desc": f"Monitored {d.name} uses {d.daily_kwh:.1f} kWh/day (~${dev_cost:.2f}/mo). Operating in eco or low-power cycles cuts ~15% consumption.",
+                    "category": "device"
+                })
+
+        if not tips:
+            if latest and latest.current_rms <= 0.05:
+                tips.append({
+                    "title": "Branch load is nominal and idle",
+                    "save": "Nominal",
+                    "impact": 95,
+                    "desc": "ESP32 SCT-013 is reading 0.00 A on TX-RES-01. No phantom leakage or overload detected on monitored circuit.",
+                    "category": "status"
+                })
+            tips.append({
+                "title": "Active telemetry monitoring",
+                "save": "Optimal",
+                "impact": 85,
+                "desc": f"Tariff rate configured at ${rate:.3f}/kWh. Telemetry streams continuously from your physical hardware.",
+                "category": "monitoring"
+            })
+
+        summary_text = f"Calculated from live ESP32 telemetry · Cut ~${total_savings:.2f}/mo" if total_savings > 0 else "Real-time tips derived from live ESP32 telemetry"
+
+        return {
+            "total_potential_savings_usd": round(total_savings, 2),
+            "summary": summary_text,
+            "tips": tips
+        }
+
+    @classmethod
+    def get_billing_summary(cls, db: Optional[Session] = None) -> Dict[str, Any]:
+        """
+        Computes current bill estimate from actual recorded energy usage + latest uploaded
+        bill tariff structure (rate per kWh, fixed charges, taxes) and run-rate projection.
+        """
+        now = datetime.utcnow()
+        days_in_month = calendar.monthrange(now.year, now.month)[1]
+        days_elapsed = max(1, now.day)
+        days_remaining = max(0, days_in_month - days_elapsed)
+
+        if not db:
+            return {
+                "current_bill": {
+                    "estimated_bill_usd": 0.0,
+                    "due_date": f"Due {datetime(now.year, now.month, 15).strftime('%b 15')}",
+                    "projected_kwh": 0.0,
+                    "kwh_so_far": 0.0,
+                    "rate_per_kwh": 0.15,
+                    "fixed_charges": 0.0,
+                    "tax_amount": 0.0,
+                    "tariff_source": "Standard Tariff ($0.15/kWh)",
+                    "days_elapsed": days_elapsed,
+                    "days_remaining": days_remaining
+                },
+                "past_bills": [],
+                "estimated_savings_this_month_usd": 0.0,
+                "promo_title": "Switch to Green Energy",
+                "promo_description": "Save more with sustainable energy solutions."
+            }
+            
+        # 1. Fetch latest verified BillRecord for tariff parameters
+        latest_bill = db.query(BillRecord).filter(
+            BillRecord.user_id == 1
+        ).order_by(BillRecord.created_at.desc()).first()
+
+        if latest_bill and latest_bill.rate_per_kwh and latest_bill.rate_per_kwh > 0:
+            rate_per_kwh = latest_bill.rate_per_kwh
+            fixed_charges = latest_bill.fixed_charges or 0.0
+            tax_amount = latest_bill.tax_amount or 0.0
+            tariff_source = f"Extracted from {latest_bill.month_label} Bill (${rate_per_kwh:.3f}/kWh)"
+            baseline_past_amount = latest_bill.amount_usd or 0.0
+            baseline_past_kwh = latest_bill.energy_kwh or 0.0
+        else:
+            rate_per_kwh = 0.15
+            fixed_charges = 0.0
+            tax_amount = 0.0
+            tariff_source = "Standard Utility Tariff ($0.15/kWh)"
+            baseline_past_amount = 0.0
+            baseline_past_kwh = 0.0
+
+        # 2. Query telemetry readings for current month
+        month_start = datetime(now.year, now.month, 1)
+        readings = db.query(TelemetryReading).filter(
+            TelemetryReading.timestamp >= month_start
+        ).all()
+        
+        if readings:
+            max_e = max(r.energy_kwh_total for r in readings)
+            min_e = min(r.energy_kwh_total for r in readings)
+            kwh_so_far = max_e - min_e if max_e > min_e else sum(r.power_kw for r in readings) * 0.05
+        else:
+            kwh_so_far = 0.0
+
+        # 3. Forecast end-of-month projected consumption
+        if kwh_so_far > 0.05:
+            daily_run_rate = kwh_so_far / days_elapsed
+            projected_remaining_kwh = daily_run_rate * days_remaining
+            projected_total_kwh = round(kwh_so_far + projected_remaining_kwh, 1)
+        elif baseline_past_kwh > 0:
+            # Telemetry monitor newly initialized this month, blend with past baseline
+            projected_total_kwh = round(baseline_past_kwh * 0.96, 1)
+        else:
+            projected_total_kwh = round(kwh_so_far, 1)
+
+        # 4. Calculate projected bill cost
+        projected_energy_cost = projected_total_kwh * rate_per_kwh
+        est_tax = tax_amount if tax_amount > 0 else round(projected_energy_cost * 0.05, 2)
+        estimated_bill = round(projected_energy_cost + fixed_charges + est_tax, 2)
+
+        # 5. Compute estimated savings
+        if baseline_past_amount > 0 and estimated_bill > 0:
+            savings = round(max(0.0, baseline_past_amount - estimated_bill), 2)
+        else:
+            savings = 0.0
+
+        # 6. Past bills list
+        past_bills_records = db.query(BillRecord).filter(
+            BillRecord.user_id == 1
+        ).order_by(BillRecord.created_at.desc()).all()
+        
+        past_bills = [
+            {
+                "id": b.id,
+                "month_year": b.month_label,
+                "status": b.status,
+                "amount_usd": b.amount_usd,
+                "due_date": b.due_date,
+                "energy_kwh": b.energy_kwh or 0.0,
+                "rate_per_kwh": b.rate_per_kwh or 0.15,
+                "fixed_charges": b.fixed_charges or 0.0,
+                "image_path": b.image_path
+            }
+            for b in past_bills_records
+        ]
+
+        # Calculate due date: 15th of next month (or 15th of current if early)
+        if now.day < 15:
+            due_date_str = f"Due {datetime(now.year, now.month, 15).strftime('%b 15')}"
+        else:
+            next_m = 1 if now.month == 12 else now.month + 1
+            next_y = now.year + 1 if now.month == 12 else now.year
+            due_date_str = f"Due {datetime(next_y, next_m, 15).strftime('%b 15')}"
+        
         return {
             "current_bill": {
-                "estimated_bill_usd": 123.50,
-                "due_date": "Due Oct 15"
+                "estimated_bill_usd": estimated_bill,
+                "due_date": due_date_str,
+                "projected_kwh": projected_total_kwh,
+                "kwh_so_far": round(kwh_so_far, 2),
+                "rate_per_kwh": rate_per_kwh,
+                "fixed_charges": fixed_charges,
+                "tax_amount": est_tax,
+                "tariff_source": tariff_source,
+                "days_elapsed": days_elapsed,
+                "days_remaining": days_remaining
             },
-            "past_bills": [
-                {"month_year": "Oct 2023", "status": "Paid", "amount_usd": 150.20, "due_date": "Nov 15"},
-                {"month_year": "Sep 2023", "status": "Paid", "amount_usd": 135.75, "due_date": "Oct 15"},
-                {"month_year": "Aug 2023", "status": "Paid", "amount_usd": 160.40, "due_date": "Sep 15"}
-            ],
-            "estimated_savings_this_month_usd": 20.00,
+            "past_bills": past_bills,
+            "estimated_savings_this_month_usd": savings,
             "promo_title": "Switch to Green Energy",
             "promo_description": "Save more with sustainable energy solutions."
         }

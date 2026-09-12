@@ -1,0 +1,14 @@
+{
+  "name": "currentzone-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CurrentZone (SmartWatt) - Outage Predictor & Energy Intelligence Platform",
+  "scripts": {
+    "dev:backend": "bash -c 'cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000'",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "npx -y concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:backend": "bash -c 'cd backend && source .venv/bin/activate && pytest'",
+    "test": "npm run test:backend"
+  }
+}

@@ -1,9 +1,30 @@
+import { useEffect, useState } from 'react'
 import { ArrowRight, TrendingUp } from 'lucide-react'
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { plugBreakdown, plugComparison, ratingBars } from '../data/mockData'
+import { ratingBars } from '../data/mockData'
+import { api } from '../services/api'
 
 export default function Insights() {
-  const total = 120
+  const [insights, setInsights] = useState({
+    totalKwh: 120,
+    peakKwh: 50,
+    ratingAverage: 4.5,
+    totalReviews: 120,
+    plugs: [
+      { name: 'Light A', kwh: 25, pct: 20.8 },
+      { name: 'Fan', kwh: 30, pct: 25.0 },
+      { name: 'A.C.', kwh: 45, pct: 37.5 },
+    ],
+  })
+
+  useEffect(() => {
+    let mounted = true
+    api.getBedroomInsights().then(data => mounted && setInsights(data))
+    return () => { mounted = false }
+  }, [])
+
+  const plugBreakdown = insights.plugs.map(p => ({ name: p.name, kwh: p.kwh }))
+  const total = insights.totalKwh
   return (
     <>
       <div className="page-head">
@@ -39,14 +60,14 @@ export default function Insights() {
         </div>
         <div className="m3-card outlined">
           <div className="m3-label">Comparison of plugs usage</div>
-          <div className="kpi">Peak: 50 kWh</div>
+          <div className="kpi">Peak: {insights.peakKwh} kWh</div>
           <div className="kpi-sub">Last 7 Days <span className="up">−10%</span></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 18 }}>
-            {plugComparison.map(p => (
+            {insights.plugs.map(p => (
               <div key={p.name} className="meter-row">
                 <b>{p.name}</b>
-                <div className="m3-linear"><div style={{ width: `${(p.kwh / 50) * 100}%` }} /></div>
-                <span className="m3-body">{p.kwh}</span>
+                <div className="m3-linear"><div style={{ width: `${(p.kwh / (insights.peakKwh || 50)) * 100}%` }} /></div>
+                <span className="m3-body">{p.kwh} kWh</span>
               </div>
             ))}
           </div>
@@ -56,7 +77,7 @@ export default function Insights() {
       <div className="grid grid-2" style={{ marginTop: 20 }}>
         <div className="m3-card filled">
           <div className="rating-wrap">
-            <div><div className="rating-score">4.5</div><div className="m3-body">120 reviews</div></div>
+            <div><div className="rating-score">{insights.ratingAverage}</div><div className="m3-body">{insights.totalReviews} reviews</div></div>
             <div className="rating-bars">
               {ratingBars.map(r => (
                 <div key={r.stars} className="rating-row">
@@ -70,9 +91,12 @@ export default function Insights() {
         </div>
         <div className="m3-card">
           <div className="m3-list">
-            <div className="m3-list-item"><div className="meta"><b>A.C.</b></div><span>45 kWh (37.5%)</span></div>
-            <div className="m3-list-item"><div className="meta"><b>Fan</b></div><span>30 kWh (25%)</span></div>
-            <div className="m3-list-item"><div className="meta"><b>Light</b></div><span>25 kWh (20.8%)</span></div>
+            {insights.plugs.map(p => (
+              <div className="m3-list-item" key={p.name}>
+                <div className="meta"><b>{p.name}</b></div>
+                <span>{p.kwh} kWh ({p.pct}%)</span>
+              </div>
+            ))}
           </div>
           <button className="m3-btn text">View Detailed Insights <ArrowRight size={15} /></button>
         </div>

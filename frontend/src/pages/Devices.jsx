@@ -1,16 +1,39 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Plug, Plus } from 'lucide-react'
-import { devices as seed, deviceHistory } from '../data/mockData'
+import { ChevronRight, Plug, Plus, RefreshCw } from 'lucide-react'
+import { deviceHistory } from '../data/mockData'
 import { Switch, Snackbar } from '../components/ui'
+import { api } from '../services/api'
 
 export default function Devices() {
   const nav = useNavigate()
-  const [devices, setDevices] = useState(seed)
+  const [devices, setDevices] = useState([])
+  const [loading, setLoading] = useState(true)
   const [snack, setSnack] = useState('')
-  const toggle = (id, v) => {
+
+  const loadDevices = async () => {
+    setLoading(true)
+    try {
+      const data = await api.getDevices()
+      setDevices(data)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadDevices()
+  }, [])
+
+  const toggle = async (id, v) => {
     setDevices(ds => ds.map(d => (d.id === id ? { ...d, on: v } : d)))
-    setSnack(`${devices.find(x => x.id === id)?.name} ${v ? 'connected' : 'paused'}`)
+    const d = devices.find(x => x.id === id)
+    setSnack(`${d?.name || 'Device'} ${v ? 'connected' : 'paused'}`)
+    try {
+      if (v) await api.connectDevice(id)
+    } catch {
+      // offline fallback
+    }
     setTimeout(() => setSnack(''), 2000)
   }
   return (

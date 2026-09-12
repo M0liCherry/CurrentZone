@@ -1,7 +1,16 @@
+import { useEffect, useState } from 'react'
 import { ArrowRight, Download, Leaf, Receipt } from 'lucide-react'
-import { bills } from '../data/mockData'
+import { bills as seedBills } from '../data/mockData'
+import { api } from '../services/api'
 
 export default function Bills() {
+  const [bills, setBills] = useState(seedBills)
+
+  useEffect(() => {
+    let mounted = true
+    api.getBillingSummary().then(data => mounted && setBills(data))
+    return () => { mounted = false }
+  }, [])
   return (
     <>
       <div className="page-head">

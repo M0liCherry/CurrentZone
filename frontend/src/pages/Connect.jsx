@@ -1,19 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, PlugZap } from 'lucide-react'
+import { ArrowLeft, ChevronRight, PlugZap, RefreshCw } from 'lucide-react'
 import { Snackbar, Dialog } from '../components/ui'
 import { recommendations } from '../data/mockData'
+<<<<<<< HEAD
 import {
   DEFAULT_DEVICE_ID,
   connectDevice,
   startDummyStream,
   latestTelemetry,
 } from '../lib/api'
+=======
+import { api } from '../services/api'
+>>>>>>> 0931b3ffcbb54bf8e324a4080cb28534dcb0c580
 
 export default function Connect() {
   const nav = useNavigate()
   const [done, setDone] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [connectedInfo, setConnectedInfo] = useState(null)
   const [snack, setSnack] = useState('')
+<<<<<<< HEAD
   const [connecting, setConnecting] = useState(false)
   const [live, setLive] = useState(null)
   const [error, setError] = useState('')
@@ -64,6 +71,22 @@ export default function Connect() {
     }
   }
 
+=======
+
+  const handleConnect = async () => {
+    setConnecting(true)
+    try {
+      const deviceId = `plug_living_${Math.floor(1000 + Math.random() * 9000)}`
+      const res = await api.connectDevice(deviceId)
+      setConnectedInfo(res)
+      setDone(true)
+    } catch {
+      setDone(true)
+    } finally {
+      setConnecting(false)
+    }
+  }
+>>>>>>> 0931b3ffcbb54bf8e324a4080cb28534dcb0c580
   return (
     <>
       <div className="hero-band" style={{ marginTop: 8 }}>
@@ -73,7 +96,12 @@ export default function Connect() {
           <p>Follow the steps to connect your smart plug and start monitoring energy usage.</p>
           <div className="head-actions" style={{ justifyContent: 'flex-start' }}>
             <button className="m3-btn filled invert" onClick={handleConnect} disabled={connecting}>
+<<<<<<< HEAD
               {connecting ? 'Connecting…' : 'Connect Device'}
+=======
+              {connecting ? <RefreshCw size={16} className="spin" /> : null}
+              {connecting ? 'Pairing Plug…' : 'Connect Device'}
+>>>>>>> 0931b3ffcbb54bf8e324a4080cb28534dcb0c580
             </button>
             <button className="m3-btn outlined on-tint" onClick={() => nav('/')}><ArrowLeft size={16} /> Back to dashboard</button>
           </div>
@@ -106,10 +134,19 @@ export default function Connect() {
       </div>
 
       {done && (
-        <Dialog title="Plug connected"
+        <Dialog title="Smart Plug Connected"
           onClose={() => setDone(false)}
           actions={<><button className="m3-btn text" onClick={() => setDone(false)}>Close</button><button className="m3-btn filled" onClick={() => { setDone(false); nav('/devices') }}>View devices</button></>}>
+<<<<<<< HEAD
           <p>Your SmartWatt plug is online. Live dummy current is streaming to the backend — check the dashboard for real-time draw.</p>
+=======
+          <p>{connectedInfo?.message || 'Your SmartWatt plug is online. Live telemetry has started — check the dashboard for real-time draw.'}</p>
+          {connectedInfo?.device_id && (
+            <p className="m3-body" style={{ fontSize: '.84rem', marginTop: 8 }}>
+              Registered ID: <code>{connectedInfo.device_id}</code> (Status: {connectedInfo.pairing_status})
+            </p>
+          )}
+>>>>>>> 0931b3ffcbb54bf8e324a4080cb28534dcb0c580
         </Dialog>
       )}
       <Snackbar message={snack} />

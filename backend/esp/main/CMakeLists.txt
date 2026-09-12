@@ -2,6 +2,7 @@ idf_component_register(
     SRCS 
         "main.c" 
         "sct013.c" 
+        "dummy_load.c"
         "wifi_station.c" 
         "telemetry_client.c"
     INCLUDE_DIRS "."

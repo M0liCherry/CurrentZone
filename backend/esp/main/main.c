@@ -29,17 +29,16 @@ static const char *TAG = "SMARTWATT_MAIN";
 #define TRANSFORMER_ID      "TX-RES-01"
 #endif
 
-// Set to 1 to transmit varying dummy current readings without SCT-013
-// hardware (bench testing / frontend "Connect Device" demo). Set to 0
-// for real ADC measurements on device.
+// Set to 1 to transmit continuously varying random telemetry readings without SCT-013
+// hardware (bench testing / live demo). Set to 0 for real ADC measurements.
 #ifndef SMARTWATT_DUMMY_MODE
-#define SMARTWATT_DUMMY_MODE 0
+#define SMARTWATT_DUMMY_MODE 1
 #endif
 
 static void sct013_monitor_task(void *pvParameters)
 {
 #if SMARTWATT_DUMMY_MODE
-    ESP_LOGI(TAG, "DUMMY MODE enabled — sending varying simulated current (no ADC hardware).");
+    ESP_LOGI(TAG, "RANDOM TELEMETRY GENERATOR enabled — streaming dynamic synthetic sensor values.");
 #else
     ESP_LOGI(TAG, "Starting SCT-013 Continuous Monitoring Task...");
 #endif
@@ -53,8 +52,9 @@ static void sct013_monitor_task(void *pvParameters)
         err = sct013_read_metrics(&metrics);
 #endif
         if (err == ESP_OK) {
-            ESP_LOGI(TAG, "== SCT-013 Live Reading ==");
+            ESP_LOGI(TAG, "== Live Telemetry Reading ==");
             ESP_LOGI(TAG, "  Current RMS  : %.2f A (Peak: %.2f A)", metrics.current_rms, metrics.current_peak);
+            ESP_LOGI(TAG, "  Voltage RMS  : %.1f V (Freq: %.2f Hz)", metrics.voltage_v, metrics.frequency_hz);
             ESP_LOGI(TAG, "  Active Power : %.2f kW (Apparent: %.2f kVA)", 
                      metrics.active_power_w / 1000.0f, metrics.apparent_power_va / 1000.0f);
             ESP_LOGI(TAG, "  Cumulative E : %.4f kWh", metrics.energy_kwh_accumulated);
@@ -72,11 +72,11 @@ static void sct013_monitor_task(void *pvParameters)
                 ESP_LOGD(TAG, "Wi-Fi not connected yet, skipping HTTP POST");
             }
         } else {
-            ESP_LOGE(TAG, "Failed to read SCT-013 metrics: %s", esp_err_to_name(err));
+            ESP_LOGE(TAG, "Failed to read telemetry metrics: %s", esp_err_to_name(err));
         }
 
-        // Sampling interval (every 3 seconds)
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        // Transmit interval: every 2 seconds for continuous live stream
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
 

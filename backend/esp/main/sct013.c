@@ -208,6 +208,8 @@ esp_err_t sct013_read_metrics(sct013_metrics_t *metrics)
     metrics->apparent_power_va = apparent_power_va;
     metrics->active_power_w = active_power_w;
     metrics->energy_kwh_accumulated = (float)s_accumulated_energy_kwh;
+    metrics->voltage_v = s_config.nominal_voltage;
+    metrics->frequency_hz = 50.0f;
     metrics->samples_taken = total_samples;
     metrics->bias_voltage_mv = bias_mv;
 

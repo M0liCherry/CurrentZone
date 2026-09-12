@@ -32,8 +32,8 @@ esp_err_t telemetry_client_post_metrics(const sct013_metrics_t *metrics)
         "\"transformer_id\":\"%s\","
         "\"current_rms\":%.2f,"
         "\"power_kw\":%.3f,"
-        "\"voltage_v\":230.0,"
-        "\"frequency_hz\":50.0,"
+        "\"voltage_v\":%.1f,"
+        "\"frequency_hz\":%.2f,"
         "\"energy_kwh_total\":%.4f,"
         "\"peak_surge_a\":%.2f,"
         "\"sample_count\":%lu,"
@@ -43,6 +43,8 @@ esp_err_t telemetry_client_post_metrics(const sct013_metrics_t *metrics)
         s_cfg.transformer_id ? s_cfg.transformer_id : "TX-RES-01",
         metrics->current_rms,
         metrics->active_power_w / 1000.0f,
+        metrics->voltage_v > 0.0f ? metrics->voltage_v : 230.0f,
+        metrics->frequency_hz > 0.0f ? metrics->frequency_hz : 50.0f,
         metrics->energy_kwh_accumulated,
         metrics->current_peak,
         (unsigned long)metrics->samples_taken,

@@ -41,6 +41,8 @@ typedef struct {
     float apparent_power_va;        /*!< Apparent power in Volt-Amperes (S = V_rms * I_rms) */
     float active_power_w;           /*!< Estimated active power in Watts (P = S * PF) */
     float energy_kwh_accumulated;   /*!< Cumulative energy consumption in kWh */
+    float voltage_v;                /*!< Grid RMS voltage in Volts (e.g. 230.0V) */
+    float frequency_hz;             /*!< Grid frequency in Hz (e.g. 50.0Hz) */
     uint32_t samples_taken;         /*!< Number of ADC conversions in this window */
     float bias_voltage_mv;          /*!< Measured/calibrated DC midpoint bias voltage in mV */
 } sct013_metrics_t;

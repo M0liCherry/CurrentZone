@@ -78,7 +78,9 @@ esp_err_t dummy_load_next(sct013_metrics_t *metrics, float nominal_voltage, floa
     if (current_rms > 98.0f) current_rms = 98.0f;  // Stay under 100 A sensor max
 
     float current_peak = current_rms * 1.4142f * (surge > 1.0f ? 1.15f : 1.0f);
-    float apparent_va = nominal_voltage * current_rms;
+    float voltage_v = nominal_voltage + (((float)rand() / (float)RAND_MAX) - 0.5f) * 6.0f;
+    float frequency_hz = 50.0f + (((float)rand() / (float)RAND_MAX) - 0.5f) * 0.3f;
+    float apparent_va = voltage_v * current_rms;
     float active_w = apparent_va * power_factor;
 
     // Energy integration over real elapsed time
@@ -96,8 +98,10 @@ esp_err_t dummy_load_next(sct013_metrics_t *metrics, float nominal_voltage, floa
     metrics->apparent_power_va = apparent_va;
     metrics->active_power_w = active_w;
     metrics->energy_kwh_accumulated = s_energy_kwh;
+    metrics->voltage_v = voltage_v;
+    metrics->frequency_hz = frequency_hz;
     metrics->samples_taken = 500;
-    metrics->bias_voltage_mv = 1650.0f;
+    metrics->bias_voltage_mv = 1650.0f + (((float)rand() / (float)RAND_MAX) - 0.5f) * 20.0f;
 
     return ESP_OK;
 }

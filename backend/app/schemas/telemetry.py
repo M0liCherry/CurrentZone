@@ -1,6 +1,14 @@
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel, Field
+
+class ApplianceTelemetry(BaseModel):
+    id: str = Field(..., description="Device ID (e.g. dev_ac_01)")
+    name: str = Field(..., description="Device display name")
+    room: Optional[str] = Field("General", description="Room location")
+    power_w: float = Field(0.0, description="Active power in Watts")
+    current_a: Optional[float] = Field(0.0, description="Current in Amperes")
+    daily_kwh: Optional[float] = Field(0.0, description="Accumulated energy today in kWh")
 
 class TelemetryIngestRequest(BaseModel):
     device_id: str = Field(..., description="Unique ESP32 device identifier (e.g., esp32_sct013_01)")
@@ -13,6 +21,7 @@ class TelemetryIngestRequest(BaseModel):
     peak_surge_a: Optional[float] = Field(0.0, description="Peak instant surge current in Amperes")
     sample_count: Optional[int] = Field(500, description="Number of ADC samples taken per calculation window")
     burden_ohms: Optional[float] = Field(22.0, description="SCT-013 burden resistor value")
+    appliances: Optional[List[ApplianceTelemetry]] = Field(None, description="Simulated or monitored appliances breakdown")
 
 class TelemetryIngestResponse(BaseModel):
     success: bool

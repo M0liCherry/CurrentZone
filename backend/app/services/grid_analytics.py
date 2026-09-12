@@ -78,7 +78,8 @@ class GridAnalyticsService:
                 "average_daily_kwh": 0.0,
                 "average_change_pct": 0.0,
                 "compared_to_yesterday_kwh": 0.0,
-                "compared_to_yesterday_pct": 0.0
+                "compared_to_yesterday_pct": 0.0,
+                "peak_window": "--"
             }
             
         now = datetime.utcnow()
@@ -116,6 +117,21 @@ class GridAnalyticsService:
         else:
             diff_kwh = total_today_kwh
             diff_pct = 0.0
+
+        # Find peak window from daily slot breakdown
+        peak_slot = max(slots, key=lambda s: s["kwh"]) if slots else None
+        if peak_slot and peak_slot["kwh"] > 0:
+            slot_ranges = {
+                "12AM": "12 AM - 4 AM",
+                "4AM": "4 AM - 8 AM",
+                "8AM": "8 AM - 12 PM",
+                "12PM": "12 PM - 4 PM",
+                "4PM": "4 PM - 8 PM",
+                "8PM": "8 PM - 12 AM",
+            }
+            peak_window = slot_ranges.get(peak_slot["time_label"], peak_slot["time_label"])
+        else:
+            peak_window = "Nominal"
             
         return {
             "title": "Daily Consumption",
@@ -124,7 +140,8 @@ class GridAnalyticsService:
             "average_daily_kwh": total_today_kwh,
             "average_change_pct": diff_pct,
             "compared_to_yesterday_kwh": diff_kwh,
-            "compared_to_yesterday_pct": diff_pct
+            "compared_to_yesterday_pct": diff_pct,
+            "peak_window": peak_window
         }
 
     @classmethod
@@ -246,29 +263,31 @@ class GridAnalyticsService:
                 "star_distribution": {"5": 0.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0}
             }
             
-        total_kwh = sum(d.daily_kwh for d in devices)
-        peak_kwh = max((d.daily_kwh for d in devices), default=0.0)
+        appliances = [d for d in devices if d.device_type != "transformer_monitor"]
+        target_devices = appliances if appliances else devices
+        total_kwh = sum(d.daily_kwh for d in target_devices)
+        peak_kwh = max((d.daily_kwh for d in target_devices), default=0.0)
         
         breakdown = []
-        for d in devices:
+        for d in target_devices:
             pct = round((d.daily_kwh / total_kwh) * 100.0, 1) if total_kwh > 0 else 0.0
             breakdown.append({
                 "name": d.name,
-                "kwh": round(d.daily_kwh, 1),
+                "kwh": round(d.daily_kwh, 2),
                 "percentage": pct,
                 "is_peak": (d.daily_kwh == peak_kwh and peak_kwh > 0)
             })
             
         return {
             "title": "Appliance Energy Consumption Overview",
-            "total_kwh": round(total_kwh, 1),
+            "total_kwh": round(total_kwh, 2),
             "total_change_pct": 0.0,
-            "peak_kwh": round(peak_kwh, 1),
+            "peak_kwh": round(peak_kwh, 2),
             "peak_change_pct": 0.0,
             "plug_breakdown": breakdown,
             "rating": 5.0,
-            "reviews_count": len(devices),
-            "star_distribution": {"5": 100.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0} if devices else {"5": 0.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0}
+            "reviews_count": len(target_devices),
+            "star_distribution": {"5": 100.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0} if target_devices else {"5": 0.0, "4": 0.0, "3": 0.0, "2": 0.0, "1": 0.0}
         }
 
     @classmethod

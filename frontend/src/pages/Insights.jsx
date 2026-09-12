@@ -14,8 +14,15 @@ export default function Insights() {
 
   useEffect(() => {
     let mounted = true
-    api.getBedroomInsights().then(data => mounted && setInsights(data))
-    return () => { mounted = false }
+    const load = () => {
+      api.getBedroomInsights().then(data => mounted && setInsights(data))
+    }
+    load()
+    const interval = setInterval(load, 3000)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
   }, [])
 
   const plugBreakdown = insights.plugs.map(p => ({ name: p.name, kwh: p.kwh }))

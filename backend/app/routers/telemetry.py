@@ -117,6 +117,72 @@ async def ingest_telemetry(payload: TelemetryIngestRequest, db: Session = Depend
         if payload.energy_kwh_total:
             device.daily_kwh = payload.energy_kwh_total
         device.last_seen = datetime.utcnow()
+
+    # Synchronize household appliances / connected devices with live telemetry
+    if payload.appliances:
+        for app in payload.appliances:
+            d = db.query(Device).filter(Device.id == app.id).first()
+            if not d:
+                d = Device(
+                    id=app.id,
+                    user_id=1,
+                    name=app.name,
+                    device_type="smart_appliance",
+                    room=app.room or "General",
+                    zone=transformer.zone if transformer else "Residential South",
+                    transformer_id=transformer.id if transformer else "TX-RES-01",
+                    is_online=True,
+                    current_power_w=app.power_w,
+                    current_amps=app.current_a or round(app.power_w / 230.0, 2),
+                    daily_kwh=app.daily_kwh or 0.0,
+                    last_seen=datetime.utcnow()
+                )
+                db.add(d)
+            else:
+                d.is_online = True
+                d.current_power_w = app.power_w
+                d.current_amps = app.current_a or round(app.power_w / 230.0, 2)
+                if app.daily_kwh is not None and app.daily_kwh > 0:
+                    d.daily_kwh = app.daily_kwh
+                d.last_seen = datetime.utcnow()
+    else:
+        # Apportion total feeder draw across simulated household appliances
+        sim_appliances = [
+            ("dev_ac_01", "Living Room AC", "Living Room", 0.44),
+            ("dev_heater_02", "Water Heater", "Bathroom", 0.24),
+            ("dev_fridge_03", "Refrigerator", "Kitchen", 0.10),
+            ("dev_cooktop_04", "Kitchen Cooktop / Oven", "Kitchen", 0.14),
+            ("dev_office_05", "Home Office & Lighting", "Home Office", 0.08),
+        ]
+        tot_w = power_kw * 1000.0
+        tot_e = payload.energy_kwh_total or (device.daily_kwh if device else 0.0)
+        for d_id, d_name, d_room, share in sim_appliances:
+            d = db.query(Device).filter(Device.id == d_id).first()
+            p_w = round(tot_w * share, 1)
+            c_a = round(current_rms * share, 2)
+            e_kwh = round(tot_e * share, 3)
+            if not d:
+                d = Device(
+                    id=d_id,
+                    user_id=1,
+                    name=d_name,
+                    device_type="smart_appliance",
+                    room=d_room,
+                    zone=transformer.zone if transformer else "Residential South",
+                    transformer_id=transformer.id if transformer else "TX-RES-01",
+                    is_online=True,
+                    current_power_w=p_w,
+                    current_amps=c_a,
+                    daily_kwh=e_kwh,
+                    last_seen=datetime.utcnow()
+                )
+                db.add(d)
+            else:
+                d.is_online = True
+                d.current_power_w = p_w
+                d.current_amps = c_a
+                d.daily_kwh = e_kwh
+                d.last_seen = datetime.utcnow()
         
     # Update user's current spend based on recorded energy
     budget = db.query(BudgetAlert).filter(BudgetAlert.user_id == 1).first()

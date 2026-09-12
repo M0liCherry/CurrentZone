@@ -23,7 +23,11 @@ esp_err_t telemetry_client_post_metrics(const sct013_metrics_t *metrics)
         return ESP_ERR_INVALID_ARG;
     }
 
-    char post_data[512];
+    float tot_w = metrics->active_power_w;
+    float tot_a = metrics->current_rms;
+    float tot_e = metrics->energy_kwh_accumulated;
+
+    char post_data[1024];
     int len = snprintf(
         post_data,
         sizeof(post_data),
@@ -37,7 +41,14 @@ esp_err_t telemetry_client_post_metrics(const sct013_metrics_t *metrics)
         "\"energy_kwh_total\":%.4f,"
         "\"peak_surge_a\":%.2f,"
         "\"sample_count\":%lu,"
-        "\"burden_ohms\":%.1f"
+        "\"burden_ohms\":%.1f,"
+        "\"appliances\":["
+        "{\"id\":\"dev_ac_01\",\"name\":\"Living Room AC\",\"room\":\"Living Room\",\"power_w\":%.1f,\"current_a\":%.2f,\"daily_kwh\":%.3f},"
+        "{\"id\":\"dev_heater_02\",\"name\":\"Water Heater\",\"room\":\"Bathroom\",\"power_w\":%.1f,\"current_a\":%.2f,\"daily_kwh\":%.3f},"
+        "{\"id\":\"dev_fridge_03\",\"name\":\"Refrigerator\",\"room\":\"Kitchen\",\"power_w\":%.1f,\"current_a\":%.2f,\"daily_kwh\":%.3f},"
+        "{\"id\":\"dev_cooktop_04\",\"name\":\"Kitchen Cooktop / Oven\",\"room\":\"Kitchen\",\"power_w\":%.1f,\"current_a\":%.2f,\"daily_kwh\":%.3f},"
+        "{\"id\":\"dev_office_05\",\"name\":\"Home Office & Lighting\",\"room\":\"Home Office\",\"power_w\":%.1f,\"current_a\":%.2f,\"daily_kwh\":%.3f}"
+        "]"
         "}",
         s_cfg.device_id ? s_cfg.device_id : "esp32_sct013_res_01",
         s_cfg.transformer_id ? s_cfg.transformer_id : "TX-RES-01",
@@ -48,7 +59,12 @@ esp_err_t telemetry_client_post_metrics(const sct013_metrics_t *metrics)
         metrics->energy_kwh_accumulated,
         metrics->current_peak,
         (unsigned long)metrics->samples_taken,
-        s_cfg.burden_ohms > 0 ? s_cfg.burden_ohms : 22.0f
+        s_cfg.burden_ohms > 0 ? s_cfg.burden_ohms : 22.0f,
+        tot_w * 0.44f, tot_a * 0.44f, tot_e * 0.44f,
+        tot_w * 0.24f, tot_a * 0.24f, tot_e * 0.24f,
+        tot_w * 0.10f, tot_a * 0.10f, tot_e * 0.10f,
+        tot_w * 0.14f, tot_a * 0.14f, tot_e * 0.14f,
+        tot_w * 0.08f, tot_a * 0.08f, tot_e * 0.08f
     );
 
     if (len < 0 || len >= sizeof(post_data)) {

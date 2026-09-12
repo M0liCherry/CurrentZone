@@ -13,6 +13,7 @@ class DailyConsumptionResponse(BaseModel):
     average_change_pct: float
     compared_to_yesterday_kwh: float
     compared_to_yesterday_pct: float
+    peak_window: str = "--"
 
 class DaySlot(BaseModel):
     day: str  # "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"

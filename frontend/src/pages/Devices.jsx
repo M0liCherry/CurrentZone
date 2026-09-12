@@ -22,6 +22,15 @@ export default function Devices() {
 
   useEffect(() => {
     loadDevices()
+    const interval = setInterval(async () => {
+      try {
+        const data = await api.getDevices()
+        setDevices(data)
+      } catch {
+        // ignore polling err
+      }
+    }, 3000)
+    return () => clearInterval(interval)
   }, [])
 
   const toggle = async (id, v) => {
